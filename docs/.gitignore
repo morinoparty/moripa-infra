@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+
+# Generated source
+.source/
+next-env.d.ts
+
+# Environment
+.env
+.env.local

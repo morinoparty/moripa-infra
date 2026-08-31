@@ -1,0 +1,44 @@
+---
+title: もりのパーティ インフラドキュメント
+description: もりのパーティ(Minecraftコミュニティ)サーバーインフラのドキュメント入口です
+---
+
+このサイトは、もりのパーティのサーバーインフラに関するドキュメントです。
+サーバーは**2つの拠点**(site1 / site2)に設置されていて、それぞれが独立した
+Kubernetes クラスタとして動いています。拠点の外との出入り口として、
+Linode 上の VPS が WireGuard のハブ(中継地点)になっています。
+
+```mermaid
+flowchart TB
+    Admin["管理者(リモートから作業)"]
+    VPS["Linode VPS(WireGuardハブ)"]
+    Site1["拠点1: site1-node1〜3(Kubernetesクラスタ)"]
+    Site2["拠点2: site2-node1〜3(Kubernetesクラスタ)"]
+
+    Admin -- "WireGuard" --> VPS
+    VPS -- "WireGuard" --> Site1
+    VPS -- "WireGuard" --> Site2
+```
+
+現地のサーバーがインターネットに繋がりさえすれば、WireGuard 経由で管理者の
+いる場所からリモートで残りの設定ができる仕組みになっています。そのため、
+現地での作業は「サーバーを設置して、最低限のネットワーク設定をして、
+インターネットに繋がることを確認する」ところまでです。
+
+## あなたはどちらですか?
+
+<Cards>
+  <Card
+    title="現地作業者向け"
+    description="サーバーの設置・配線・OSインストール・ネットワーク設定を行う方はこちら"
+    href="/docs/onsite"
+  />
+  <Card
+    title="管理者向け"
+    description="リモートでの構成・運用・トラブル対応を行う方はこちら"
+    href="/docs/admin"
+  />
+</Cards>
+
+インフラの詳しい設計(ネットワーク設計、Kubernetes構成、GitOpsなど)を
+知りたい方は、設計資料のセクションをご覧ください。

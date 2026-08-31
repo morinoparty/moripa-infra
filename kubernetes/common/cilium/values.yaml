@@ -27,7 +27,7 @@ devices:
 
 # ベース MTU を明示(wg0 の 1420 を最小値として誤検出させない)。
 # VXLAN の Pod MTU は 1500 - 50 = 1450。
-# 南北 egress の wg 経由分はハブ側の MSS clamp で救済する(docs/wireguard.md)
+# 南北 egress の wg 経由分はハブ側の MSS clamp で救済する(docs/content/docs/architecture/wireguard.mdx)
 MTU: 1500
 
 gatewayAPI:

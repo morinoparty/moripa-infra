@@ -3,6 +3,7 @@ extends: default
 ignore: |
   .venv/
   .terraform/
+  docs/
 
 rules:
   line-length:

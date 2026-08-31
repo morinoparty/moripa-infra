@@ -1,7 +1,7 @@
 # restart ではなく syncconf で反映する:
 # フルトンネル確立後に wg-quick@wg0 を restart すると自分の管理セッションや
 # DNAT 経由の既存接続まで切れる。Interface 行(Address/MTU/PostUp)を変更した
-# 場合のみ、計画的に手動 restart すること(docs/wireguard.md)。
+# 場合のみ、計画的に手動 restart すること(docs/content/docs/architecture/wireguard.mdx)。
 - name: Sync WireGuard config
   ansible.builtin.shell: >-
     set -o pipefail;

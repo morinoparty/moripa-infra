@@ -1,5 +1,5 @@
 # {{ ansible_managed }}
-# 設計: docs/wireguard.md
+# 設計: docs/content/docs/architecture/wireguard.mdx
 {% if wg_role == "hub" %}
 [Interface]
 Address    = {{ wg_address }}/{{ wg_cidr.split('/')[1] }}

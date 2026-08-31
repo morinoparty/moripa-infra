@@ -1,0 +1,61 @@
+---
+title: ネットワーク値・バージョン一覧
+description: CIDR・VIP・DNATルール・各コンポーネントのバージョンの一覧
+---
+
+<Callout title="唯一の正は ansible/group_vars">
+  このページの値は概要としての一覧であり、**唯一の正は
+  `ansible/group_vars/all/network.yml`・`ansible/group_vars/site1.yml`・
+  `ansible/group_vars/site2.yml`・`ansible/group_vars/all/versions.yml`**。
+  実際の値を変更する場合は必ず group_vars 側を更新し、このページは
+  参照用として後から追従させること。
+</Callout>
+
+## ネットワーク値
+
+| 項目 | 値 | 備考 |
+|---|---|---|
+| ノードの OS | Ubuntu 26.04.1 LTS server | 全ノード共通 |
+| 拠点構成 | 2拠点 × 3台、拠点ごとに独立クラスタ | 各拠点3台全部 control-plane(stacked etcd・schedulable)、API VIP は kube-vip |
+| site1 LAN CIDR | `192.168.10.0/24` | ノード `.11`–`.13`、kube-vip VIP `.10` |
+| site2 LAN CIDR | `192.168.20.0/24` | ノード `.11`–`.13`、kube-vip VIP `.10` |
+| WireGuard CIDR | `10.100.0.0/24` | site1 は `.11`–`.13`、site2 は `.21`–`.23`。LAN / Pod / Service と重複しないこと |
+| WireGuard ポート | `51820` | ハブの ListenPort |
+| WireGuard MTU | `1420` | 1500 − 80(オーバーヘッド + 余裕) |
+| Pod CIDR | `10.244.0.0/16` | **両拠点で同一値**(`/docs/architecture/multi-site` 参照) |
+| Service CIDR | `10.96.0.0/12` | 同上 |
+| kube-api ポート | `6443` | |
+| 外部公開ポート | Minecraft `25565`、HTTP/HTTPS `80`/`443` | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
+| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使用。cluster 鍵と deploy key は両拠点共有 |
+
+## DNAT ルール(`ansible/group_vars/all/network.yml` の `dnat_rules`)
+
+| name | proto | dport | target | tport | 備考 |
+|---|---|---|---|---|---|
+| minecraft | tcp | `25565` | `10.100.0.11` | `30565` | site1-node1 の NodePort(eTP Local) |
+| http | tcp | `80` | `10.100.0.11` | `80` | site1 Cilium Gateway(hostNetwork) |
+| https | tcp | `443` | `10.100.0.11` | `443` | 同上 |
+
+`target` / `tport` の対応関係、および `terraform` の `public_tcp_ports`
+との一致は `make check-consistency` が検査する。
+
+## コンポーネントのバージョン(`ansible/group_vars/all/versions.yml`)
+
+| コンポーネント | バージョン | 備考 |
+|---|---|---|
+| Kubernetes | `1.35`(`v1.35.8`) | pkgs.k8s.io のマイナーリポジトリ。パッチはリポジトリ内最新を導入して apt hold |
+| Cilium | `1.19.7` | 1.19系の最新パッチ(1.20はリリース直後のため見送り) |
+| kube-vip | `v1.2.3` | |
+| Gateway API | `v1.4.1` | Cilium 1.19 がサポートするバージョン |
+| Helm | `v3.21.4` | |
+| pause イメージ | `registry.k8s.io/pause:3.10` | kubeadm が期待するバージョン。`kubeadm config images list` で要確認 |
+
+## 拠点固有の値(`ansible/group_vars/site1.yml` / `site2.yml`)
+
+| 項目 | site1 | site2 |
+|---|---|---|
+| `site_name` | `site1` | `site2` |
+| `lan_cidr` | `192.168.10.0/24` | `192.168.20.0/24` |
+| `kube_vip_address` | `192.168.10.10` | `192.168.20.10` |
+| `k8s_cp_group` | `site1_control_plane` | `site2_control_plane` |
+| `cilium_site_values_relpath` | `kubernetes/sites/site1/infrastructure/cilium/values.yaml` | `kubernetes/sites/site2/infrastructure/cilium/values.yaml` |

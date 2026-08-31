@@ -1,0 +1,5 @@
+{
+	"title": "現地作業者向け",
+	"icon": "Wrench",
+	"pages": ["index", "hardware", "os-install", "network"]
+}

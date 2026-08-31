@@ -24,7 +24,7 @@ wg_extra_peers: []
 
 # Pod / Service CIDR は両拠点で同一値を使う。クラスタ同士は接続しないため
 # 重複しても問題ない(将来 cluster mesh 等で接続するなら再IP設計が必要 →
-# docs/multi-site.md)
+# docs/content/docs/architecture/multi-site.mdx)
 pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
 kube_api_port: 6443

@@ -26,8 +26,8 @@
 
 - 各ノードの**外向き通信は Linode 経由**(フルトンネル)。外部からは Linode の固定IPに見える
 - **クラスタ内通信(etcd / Pod / Service)は各拠点の LAN 内で直接通信**し、トンネルを通らない
-  → 詳細は [docs/wireguard.md](docs/wireguard.md)
-- 拠点間はクラスタレベルで**接続しない**(→ [docs/multi-site.md](docs/multi-site.md))
+  → 詳細は [docs/content/docs/architecture/wireguard.mdx](docs/content/docs/architecture/wireguard.mdx)
+- 拠点間はクラスタレベルで**接続しない**(→ [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx))
 - 外部公開は Linode 側の DNAT でトンネル越しに対象拠点のノードへ転送
 
 ## ディレクトリ構成
@@ -42,9 +42,10 @@ moripa-infra/
 │   └── envs/
 │       └── prod/               # 実環境の tfvars(state はローカル + gitignore)
 ├── ansible/
-│   ├── inventory/hosts.yml     # gateway / k8s_control_plane / k8s_workers
+│   ├── inventory/hosts.yml     # gateway / site1(_control_plane) / site2(_control_plane)
 │   ├── group_vars/
-│   │   └── all/network.yml     # ★ 全 CIDR / IP / ポートの唯一の正
+│   │   ├── all/network.yml     # ★ 共通ネットワーク値の唯一の正
+│   │   └── site1.yml, site2.yml  # 拠点別(LAN CIDR / VIP / グループ名)
 │   ├── host_vars/<host>/       # wg 公開鍵(平文) + 秘密鍵(sops 暗号化)
 │   ├── roles/
 │   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades
@@ -73,7 +74,7 @@ moripa-infra/
 │       │       └── minecraft/          # eTP Local + DNAT 先ノードにピン
 │       └── site2/              # site1 と同構造(apps は空の雛形)
 ├── scripts/                    # check_consistency.py / check_secrets.sh
-├── docs/                       # wireguard.md / runbook.md / multi-site.md
+├── docs/                       # fumadocs ドキュメントサイト(pnpm dev / build)
 └── .github/workflows/ci.yml    # make lint 相当の CI
 ```
 
@@ -106,7 +107,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | site1 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.13、kube-vip VIP .10 |
 | site2 LAN CIDR | 192.168.20.0/24(提案値) | ノード .11–.13、kube-vip VIP .10 |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.13、site2 は .21–.23。LAN / Pod / Service と重複しないこと |
-| Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/multi-site.md](docs/multi-site.md)) |
+| Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
 | 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵と deploy key は両拠点共有 |
 
@@ -129,5 +130,5 @@ split-tunnel にする場合の選択肢:
 - [x] `git init` してリモート(GitHub 等)に push — **ArgoCD が参照できるリポジトリであることが前提条件**
 - [x] 前提テーブルの値を確定(LAN CIDR のみ提案値。実測後 group_vars を更新)
 - [x] terraform / ansible / kubernetes の各実装
-- [ ] 実鍵の生成(age 鍵 3種、wg 鍵、GitHub deploy key)→ [docs/runbook.md](docs/runbook.md)
-- [ ] 実機適用([docs/runbook.md](docs/runbook.md) の手順に従う)
+- [ ] 実鍵の生成(age 鍵 3種、wg 鍵、GitHub deploy key)→ 管理者向けドキュメント(docs/content/docs/admin/)
+- [ ] 実機適用(管理者向けドキュメント(docs/content/docs/admin/) の手順に従う)

@@ -1,0 +1,128 @@
+---
+title: 鍵と秘密情報の一覧
+description: 実機適用の前に生成・準備しておくべき鍵・秘密情報の完全なリスト
+---
+
+実機適用を始める前に、以下の鍵・秘密情報をすべて生成しておく必要があります。
+このページの生成コマンドは旧 `docs/runbook.md` §0 の内容を移行したものです。
+
+<Callout title="最重要: 管理者マシンの WireGuard 鍵を忘れると詰む">
+  管理者マシンの WireGuard peer 登録(`wg_extra_peers`)を忘れたまま公開 SSH
+  を閉じると、ゲートウェイにも各ノードにも到達できなくなります。復旧手段は
+  Linode の LISH コンソールのみです。公開 SSH を閉じる前に、必ず管理者マシン
+  からの wg 経由 SSH が通ることを確認してください(`/docs/admin/operations`
+  参照)。
+</Callout>
+
+## age 鍵(sops 復号用)3種
+
+`ansible/group_vars/` と Kubernetes Secret の暗号化に sops + age を使う。
+受信者鍵は `.sops.yaml` に3つ登録する。
+
+| 鍵 | 用途 | 秘密部の置き場所 |
+|---|---|---|
+| admin | 管理者が手元で復号するための鍵 | 管理者の手元(`~/keys/age-admin.agekey`) |
+| ci | GitHub Actions が CI で復号するための鍵 | GitHub Actions の Secrets(`SOPS_AGE_KEY`) |
+| cluster | ArgoCD の repo-server(ksops)が k8s Secret を復号するための鍵 | 両拠点の repo-server に Secret `sops-age` として投入(bootstrap 時、out-of-band) |
+
+生成コマンド:
+
+```sh
+age-keygen -o ~/keys/age-admin.agekey     # 公開鍵を .sops.yaml の &admin に
+age-keygen -o ~/keys/age-ci.agekey        # 公開鍵を &ci に
+age-keygen -o ~/keys/age-cluster.agekey   # 公開鍵を &cluster に
+export SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey
+```
+
+`cluster` 鍵は両拠点で**共有**する(サイト別に分離するより運用の単純さを
+優先する方針。詳細は `kubernetes/sites/site1/bootstrap/secrets/README.md`)。
+
+## WireGuard 鍵: 7ホスト分 + 管理者マシン
+
+`make wg-keygen HOST=<host>` で秘密鍵を sops 暗号化しつつ生成し、公開鍵を
+表示する。対象は以下の7ホスト。
+
+```sh
+for h in linode-gw site1-node{1..3} site2-node{1..3}; do make wg-keygen HOST=$h; done
+```
+
+表示された公開鍵は `ansible/host_vars/<host>/main.yml` に追記(コミット対象)。
+
+これに加えて、**管理者マシン自身の WireGuard 鍵**も生成し、`wg_extra_peers`
+に登録する必要がある(これは Ansible の対象ホストではないため
+`make wg-keygen` では作らない)。
+
+```sh
+wg genkey | tee ~/keys/wg-admin.key | wg pubkey   # 表示された公開鍵を登録する
+```
+
+表示された公開鍵を `ansible/group_vars/all/network.yml` の `wg_extra_peers`
+に追記する(`allowed_ips: 10.100.0.100/32`)。管理者マシン側の設定はフル
+トンネルにせず、管理経路(`10.100.0.0/24`)のみ通す:
+
+```ini
+# 管理者マシンの /etc/wireguard/wg0.conf
+[Interface]
+Address    = 10.100.0.100/32
+PrivateKey = <~/keys/wg-admin.key の中身>
+[Peer]
+PublicKey           = <linode-gw の公開鍵>
+Endpoint            = <linode public ip>:51820
+AllowedIPs          = 10.100.0.0/24
+PersistentKeepalive = 25
+```
+
+## GitHub deploy key(ArgoCD 用、read-only)
+
+ArgoCD の repo-server がこのリポジトリを読むための鍵。**両拠点で同じ鍵を
+共有**し、GitHub 側への登録は1回でよい。
+
+```sh
+ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C argocd@moripa
+```
+
+- 公開鍵: GitHub リポジトリの Settings → Deploy keys に read-only で登録(1回)
+- 秘密鍵: `kubernetes/sites/site1/bootstrap/secrets/repo-moripa-infra.sops.yaml`
+  と site2 側の同名ファイルの `sshPrivateKey` に貼り、それぞれ `sops -e -i`
+  で暗号化
+- 作業後、`/tmp` に残した平文鍵は `shred` で削除する
+
+## まとめ表
+
+| 鍵 / 秘密情報 | 生成コマンド | 置き場所 | 拠点間の共有 |
+|---|---|---|---|
+| age admin | `age-keygen` | 管理者の手元 | (個人鍵) |
+| age ci | `age-keygen` | GitHub Actions Secrets | (CI 用) |
+| age cluster | `age-keygen` | 両拠点の repo-server Secret | 共有 |
+| wg: linode-gw 他6ホスト | `make wg-keygen HOST=...` | `ansible/host_vars/<host>/` | ホストごとに別鍵 |
+| wg: 管理者マシン | `wg genkey` | 管理者マシン + `network.yml` の `wg_extra_peers` | (個人鍵) |
+| GitHub deploy key | `ssh-keygen` | 両拠点の `repo-moripa-infra.sops.yaml` | 共有(1鍵) |
+
+## 現地作業者に渡すもの
+
+現地作業者には以下の情報とスクリプトを事前に渡す。
+
+| 渡すもの | 内容 |
+|---|---|
+| ホスト名 | 例: `site1-node1` |
+| そのノードの固定 IP | 例: `192.168.10.11` |
+| 拠点のルーター IP(デフォルトゲートウェイ) | 例: `192.168.10.1` |
+| `moripa` ユーザーのパスワード | OS ログイン用 |
+| ブートストラップコマンド | 下記参照 |
+
+### ブートストラップコマンドとして用意するもの
+
+現地作業者が実行する1行のコマンドは、管理者が事前に用意する自作スクリプトを
+指す。中身はそのノード用の `wg0.conf`(前節で生成した WireGuard 秘密鍵を
+含む)を書き込み、WireGuard パッケージを導入して `wg-quick up wg0` で
+起動するというもの。
+
+<Callout title="秘密鍵の取り扱いに注意">
+  このスクリプトにはそのノードの WireGuard 秘密鍵が平文で埋め込まれる。
+  受け渡しは配布後速やかに無効化できる経路(使い捨てURL・暗号化チャット等)
+  を使い、リポジトリにはコミットしないこと。
+</Callout>
+
+このコマンドの実行が完了すると、そのノードは wg spoke としてハブに接続され、
+以降の Kubernetes ブートストラップ(`make cluster`)は管理者がリモートから
+実行できるようになる。

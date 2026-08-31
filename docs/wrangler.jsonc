@@ -1,0 +1,23 @@
+/**
+ * ドキュメントサイト(fumadocs 静的エクスポート)を Cloudflare Workers の
+ * static assets として配信する。moripath/storybook の構成に倣った
+ * assets-only Worker(main なし・binding なし)。
+ * デプロイ: pnpm run deploy(CI: .github/workflows/deploy-docs.yml)
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "moripa-infra-docs",
+	"compatibility_date": "2026-08-01",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"assets": {
+		"directory": "./out",
+		// SSG の複数 HTML 構成なので SPA フォールバックではなく 404.html を返す
+		"not_found_handling": "404-page"
+	},
+	"observability": {
+		"enabled": false
+	},
+	"preview_urls": true
+	// カスタムドメインを割り当てる場合:
+	// "routes": [{ "pattern": "docs.example.com", "custom_domain": true }]
+}

@@ -12,3 +12,6 @@ next-env.d.ts
 # Environment
 .env
 .env.local
+
+# wrangler
+.wrangler/

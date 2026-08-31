@@ -1,0 +1,61 @@
+name: Deploy Docs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/deploy-docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Deploy Docs to Cloudflare Workers
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: docs/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: docs
+        run: pnpm run build
+
+      # デプロイトークンは BSM morinoparty プロジェクトの shared/CLOUDFLARE_API_TOKEN
+      # から取得(moripath の deploy-storybook.yml と同じパターン)
+      - name: Get deploy token from Bitwarden Secrets Manager
+        uses: bitwarden/sm-action@v3.0.1
+        with:
+          access_token: ${{ secrets.NIKOMARU_BITWARDEN_SECRET_MANAGER_ACCESS_TOKEN }}
+          secrets: |
+            d1a5c5d9-41cc-48f0-9035-b49901583491 > CLOUDFLARE_API_TOKEN
+
+      # sm-action は env にしか出さないため、wrangler-action の with: から
+      # 参照できるよう output 化(値は GitHub Actions がマスクする)
+      - name: Expose deploy token as step output
+        id: bws-deploy
+        run: echo "cloudflare_api_token=$CLOUDFLARE_API_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy docs
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ steps.bws-deploy.outputs.cloudflare_api_token }}
+          accountId: ${{ secrets.OWNER_CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          command: deploy

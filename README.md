@@ -74,7 +74,7 @@ moripa-infra/
 │       │       └── minecraft/          # eTP Local + DNAT 先ノードにピン
 │       └── site2/              # site1 と同構造(apps は空の雛形)
 ├── scripts/                    # check_consistency.py / check_secrets.sh
-├── docs/                       # fumadocs ドキュメントサイト(pnpm dev / build)
+├── docs/                       # fumadocs ドキュメントサイト(Workers へ自動デプロイ)
 └── .github/workflows/ci.yml    # make lint 相当の CI
 ```
 

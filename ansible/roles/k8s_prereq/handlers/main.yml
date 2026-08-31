@@ -1,0 +1,13 @@
+- name: Restart containerd
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: restarted
+  become: true
+
+- name: Restart kubelet
+  ansible.builtin.systemd_service:
+    name: kubelet
+    state: restarted
+  become: true
+  # kubelet 未導入の初回はサービスが無くても失敗にしない
+  failed_when: false

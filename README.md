@@ -42,8 +42,8 @@ moripa-infra/
 │   ├── roles/
 │   │   ├── base/               # 共通設定(ユーザー, sshd, sysctl, unattended-upgrades)
 │   │   ├── wireguard/          # wg 設定配布(hub / spoke 両対応)
-│   │   ├── k8s-prereq/         # containerd, kubeadm/kubelet, カーネルモジュール
-│   │   └── k8s-bootstrap/      # kubeadm init/join (kube-proxy なし), Cilium Helm 投入
+│   │   ├── k8s_prereq/         # containerd, kubeadm/kubelet, カーネルモジュール
+│   │   └── k8s_bootstrap/      # kubeadm init/join (kube-proxy なし), Cilium Helm 投入
 │   └── playbooks/
 │       ├── site.yml
 │       ├── gateway.yml         # Linode 側の設定
@@ -68,8 +68,8 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables (masquerade / DNAT) を設定
 3. **Ansible `cluster.yml`**:
    1. `base` + `wireguard`: 各ノードを spoke として接続
-   2. `k8s-prereq`: containerd / kubeadm 導入
-   3. `k8s-bootstrap`: `kubeadm init --skip-phases=addon/kube-proxy` → 各ノード join
+   2. `k8s_prereq`: containerd / kubeadm 導入
+   3. `k8s_bootstrap`: `kubeadm init --skip-phases=addon/kube-proxy` → 各ノード join
    4. Cilium を Helm で投入 (kube-proxy replacement 有効)
 4. **ArgoCD 導入**: `kubernetes/bootstrap/` を適用し、app-of-apps を起動
 5. 以降は ArgoCD が `kubernetes/infrastructure/` と `kubernetes/apps/` を同期。

@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# containerd 2.x (config version 3)。未指定の項目はデフォルトが適用される。
+# 1.x とは SystemdCgroup / sandbox の設定位置が異なる点に注意。
+version = 3
+
+[plugins.'io.containerd.cri.v1.images'.pinned_images]
+  sandbox = '{{ pause_image }}'
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
+  runtime_type = 'io.containerd.runc.v2'
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
+  SystemdCgroup = true

@@ -1,0 +1,108 @@
+# --- swap 無効化 -------------------------------------------------------------
+
+- name: swap を即時無効化
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+  changed_when: ansible_swaptotal_mb > 0
+  become: true
+
+- name: fstab の swap エントリをコメントアウト
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\S+\s+\S+\s+swap\s+.*)$'
+    replace: '# \1'
+  become: true
+
+# --- カーネル設定 ------------------------------------------------------------
+
+- name: カーネルモジュールを常時ロード
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    mode: "0644"
+  become: true
+
+- name: カーネルモジュールを即時ロード
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: [overlay, br_netfilter]
+  become: true
+
+- name: k8s 用 sysctl を設定
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/90-kubernetes.conf
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+  become: true
+
+# --- containerd (Ubuntu 26.04 同梱の 2.x, config v3) -------------------------
+
+- name: containerd を導入
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: containerd config (v3) を配布
+  ansible.builtin.template:
+    src: containerd-config.toml.j2
+    dest: /etc/containerd/config.toml
+    mode: "0644"
+  become: true
+  notify: Restart containerd
+
+- name: containerd を有効化・起動
+  ansible.builtin.systemd_service:
+    name: containerd
+    enabled: true
+    state: started
+  become: true
+
+# --- kubeadm / kubelet / kubectl (pkgs.k8s.io) -------------------------------
+
+- name: kubernetes apt リポジトリを登録(deb822 + Signed-By)
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    types: deb
+    uris: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/
+    suites: /
+    signed_by: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key
+  become: true
+  register: k8s_prereq_repo
+
+- name: apt キャッシュを更新
+  ansible.builtin.apt:
+    update_cache: true
+  when: k8s_prereq_repo is changed
+  become: true
+
+- name: kubeadm / kubelet / kubectl を導入
+  ansible.builtin.apt:
+    name: [kubeadm, kubelet, kubectl]
+    state: present
+  become: true
+
+- name: k8s パッケージを hold(更新は計画的に手動で)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [kubeadm, kubelet, kubectl]
+  become: true
+
+- name: kubelet の node-ip を LAN IP に固定
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    content: |
+      KUBELET_EXTRA_ARGS=--node-ip={{ ansible_host }}
+    mode: "0644"
+  become: true
+  notify: Restart kubelet

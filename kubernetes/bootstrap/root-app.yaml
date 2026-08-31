@@ -1,0 +1,19 @@
+# app-of-apps のルート。make bootstrap-argocd が kubectl apply する唯一の Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:morinoparty/moripa-infra.git
+    targetRevision: main
+    path: kubernetes/bootstrap/applications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: false  # root だけは手動 prune(Application の誤削除防止)

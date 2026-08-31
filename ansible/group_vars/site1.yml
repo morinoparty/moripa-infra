@@ -1,8 +1,7 @@
 site_name: site1
 lan_cidr: 192.168.10.0/24
 kube_vip_address: 192.168.10.10
-# この拠点のクラスタの control-plane / worker グループ名(k8s_bootstrap が参照)
+# この拠点のクラスタの control-plane グループ名(k8s_bootstrap が参照)
 k8s_cp_group: site1_control_plane
-k8s_worker_group: site1_workers
 # この拠点の Cilium サイト差分 values(リポジトリルートからの相対パス)
 cilium_site_values_relpath: kubernetes/sites/site1/infrastructure/cilium/values.yaml

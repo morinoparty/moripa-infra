@@ -11,7 +11,7 @@ ArgoCD が repo を読めるようになる**前**に必要な2つの Secret。
 - cluster 用 age 鍵: 1つを両クラスタの repo-server に投入
 - GitHub deploy key: 1つを両クラスタの repo Secret に使用(GitHub 側の登録も1回)
 
-したがって site2/site2 の secrets の中身は同一でよい(ファイルは各サイトに置く)。
+したがって site1/site2 の secrets の中身は同一でよい(ファイルは各サイトに置く)。
 
 ## 作成手順
 

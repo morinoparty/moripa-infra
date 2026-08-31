@@ -79,14 +79,18 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 
 実際の値が確定したら `ansible/group_vars/` と本ドキュメントを更新すること。
 
-| 項目 | 仮の値 | 備考 |
+ネットワーク値の**唯一の正は `ansible/group_vars/all/network.yml`**。
+本テーブルは概要であり、変更は group_vars 側で行うこと。
+
+| 項目 | 値 | 備考 |
 |---|---|---|
-| ノードの OS | Ubuntu 24.04 LTS | 要確認 |
-| 自宅 LAN CIDR | 192.168.1.0/24 | 6台が同一LANにいる前提。**この前提が崩れると WireGuard 設計の見直しが必要** |
+| ノードの OS | Ubuntu 26.04.1 LTS server | 確定 |
+| クラスタ構成 | 3 control-plane (schedulable) + 3 worker | stacked etcd、API VIP は kube-vip |
+| 自宅 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.16、kube-vip VIP .10。6台が同一LANにいる前提。**この前提が崩れると WireGuard 設計の見直しが必要**([docs/multi-site.md](docs/multi-site.md)) |
 | WireGuard CIDR | 10.100.0.0/24 | LAN / Pod / Service と重複しないこと |
 | Pod CIDR | 10.244.0.0/16 | Cilium cluster-pool |
 | Service CIDR | 10.96.0.0/12 | kubeadm デフォルト |
-| 外部公開ポート | Minecraft (25565/tcp 等) | Linode 側 DNAT で定義 |
+| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える |
 
 ## 注意: Nanode の転送量上限
@@ -105,6 +109,8 @@ split-tunnel にする場合の選択肢:
 
 ## 次のステップ
 
-- [ ] `git init` してリモート(GitHub 等)に push — **ArgoCD が参照できるリポジトリであることが前提条件**
-- [ ] 前提テーブルの値を実際の値で確定
-- [ ] terraform / ansible / kubernetes の各実装
+- [x] `git init` してリモート(GitHub 等)に push — **ArgoCD が参照できるリポジトリであることが前提条件**
+- [x] 前提テーブルの値を確定(LAN CIDR のみ提案値。実測後 group_vars を更新)
+- [x] terraform / ansible / kubernetes の各実装
+- [ ] 実鍵の生成(age 鍵 3種、wg 鍵、GitHub deploy key)→ [docs/runbook.md](docs/runbook.md)
+- [ ] 実機適用([docs/runbook.md](docs/runbook.md) の手順に従う)

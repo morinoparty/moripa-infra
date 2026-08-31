@@ -1,0 +1,22 @@
+# Terraform (state はローカル運用・コミット禁止。lock ファイルはコミットする)
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform/
+crash.log
+
+# 秘密情報・鍵(sops で暗号化されていない実体)
+*.agekey
+age-*.txt
+kubeconfig*
+!kubeconfig*.sops.yaml
+*.pem
+id_ed25519*
+!*.pub
+.envrc
+
+# 一時ファイル
+*.swp
+.DS_Store
+__pycache__/
+.venv/

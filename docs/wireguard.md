@@ -30,7 +30,7 @@ $5 VPS 経由になりクラスタが実用にならない。ただし **wg-quic
   **fwmark + ポリシールーティング**(table 51820 + `suppress_prefixlength 0` ルール)を使う
 - `suppress_prefixlength 0` により、**main テーブルにより具体的な経路があれば
   そちらが勝つ**。つまり:
-  - LAN 内ノード間通信 → connected route (`192.168.1.0/24 dev eth0`) が勝つ → 直接通信
+  - LAN 内ノード間通信 → connected route (`<lan_cidr> dev <LAN NIC>`) が勝つ → 直接通信
   - Pod CIDR → Cilium が main テーブルに入れる経路(native routing)、または
     VXLAN 外側パケットがノードIP宛(= LAN 経路)になる → 直接通信
   - それ以外の外向き → table 51820 の default → wg0 経由
@@ -65,7 +65,7 @@ AllowedIPs = 10.100.0.11/32
 # ... node2–6 同様 (Ansible テンプレートで生成)
 ```
 
-nftables (抜粋、Ansible の `wireguard` ロールで管理):
+nftables (抜粋、Ansible の `wireguard` ロールが `dnat_rules` 変数から生成):
 
 ```nft
 table inet nat {
@@ -75,8 +75,18 @@ table inet nat {
   }
   chain prerouting {
     type nat hook prerouting priority dstnat;
-    # 例: Minecraft を node1 へ公開
-    iifname "eth0" tcp dport 25565 dnat ip to 10.100.0.11:25565
+    # 例: Minecraft を node1 の NodePort へ公開
+    iifname "eth0" tcp dport 25565 dnat ip to 10.100.0.11:30565
+  }
+}
+table inet filter {
+  chain forward {
+    type filter hook forward priority filter;
+    # Pod egress は wg0(MTU 1420)を通るため TCP の MSS を clamp
+    # (クラスタ内 MTU 1450 のパケットがブラックホール化するのを防ぐ)
+    tcp flags syn tcp option maxseg size set rt mtu
+    ct state established,related accept
+    ...
   }
 }
 ```
@@ -85,6 +95,9 @@ table inet nat {
 
 ### spoke (各ノード) — `/etc/wireguard/wg0.conf`
 
+実体は `ansible/roles/wireguard/templates/wg0.conf.j2` が
+`lan_cidr` / `pod_cidr` / `service_cidr` 変数から生成する。以下は生成例:
+
 ```ini
 [Interface]
 Address    = 10.100.0.11/32
@@ -92,12 +105,12 @@ PrivateKey = <sops で管理>
 MTU        = 1420
 # フルトンネル時に wg-quick が fwmark + policy routing を設定する
 # 念のため k8s / LAN 向けを main テーブル経由に明示固定
-PostUp   = ip rule add to 192.168.1.0/24 lookup main priority 100
-PostUp   = ip rule add to 10.244.0.0/16  lookup main priority 100
-PostUp   = ip rule add to 10.96.0.0/12   lookup main priority 100
-PostDown = ip rule del to 192.168.1.0/24 lookup main priority 100
-PostDown = ip rule del to 10.244.0.0/16  lookup main priority 100
-PostDown = ip rule del to 10.96.0.0/12   lookup main priority 100
+PostUp   = ip rule add to 192.168.10.0/24 lookup main priority 100
+PostUp   = ip rule add to 10.244.0.0/16   lookup main priority 100
+PostUp   = ip rule add to 10.96.0.0/12    lookup main priority 100
+PostDown = ip rule del to 192.168.10.0/24 lookup main priority 100
+PostDown = ip rule del to 10.244.0.0/16   lookup main priority 100
+PostDown = ip rule del to 10.96.0.0/12    lookup main priority 100
 
 [Peer]  # linode-gw
 PublicKey           = <gw pubkey>
@@ -105,6 +118,15 @@ Endpoint            = <linode public ip>:51820
 AllowedIPs          = 0.0.0.0/0
 PersistentKeepalive = 25
 ```
+
+補足(Ansible ロールが設定する周辺項目):
+
+- **rp_filter は loose (2)** に設定する。strict だと DNAT で wg0 から着信する
+  src=クライアント公開IP のパケットが reverse path 検査で落ちる
+- 設定変更の反映は **`wg syncconf`**(handler)で行い、`wg-quick@wg0 restart` は
+  使わない。フルトンネル確立後の restart は自分の管理セッションや DNAT 経由の
+  接続を切断するため。Interface 行(Address/MTU/PostUp)を変えた場合のみ
+  計画的に restart する
 
 ## 鍵の管理
 

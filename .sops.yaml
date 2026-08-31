@@ -1,0 +1,28 @@
+# sops + age の暗号化ルール
+#
+# age 鍵は3つ(受信者)。実鍵生成後にプレースホルダーを置き換えること:
+#   - admin  : 管理者の鍵(手元の age-admin.agekey)
+#   - ci     : GitHub Actions 用(Secrets に秘密部を登録)
+#   - cluster: ksops(ArgoCD repo-server)復号用。秘密部は bootstrap 時に
+#              Secret `sops-age` としてクラスタへ投入する
+#
+# プレースホルダーのままだと `sops -e` は失敗する(安全側)。
+keys:
+  - &admin age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqadmin0
+  - &ci age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqci0
+  - &cluster age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqcluster0
+creation_rules:
+  # Ansible の秘密変数(wg 秘密鍵など)
+  - path_regex: ansible/.*\.sops\.ya?ml$
+    key_groups:
+      - age:
+          - *admin
+          - *ci
+  # k8s Secret: data/stringData のみ暗号化し、kind/metadata は diff 可能に保つ
+  - path_regex: kubernetes/.*\.sops\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    key_groups:
+      - age:
+          - *admin
+          - *ci
+          - *cluster

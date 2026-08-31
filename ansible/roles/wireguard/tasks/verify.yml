@@ -1,0 +1,25 @@
+# spoke の疎通・経路健全性チェック(handler 反映後に実行)
+- name: handler を先に反映
+  ansible.builtin.meta: flush_handlers
+
+- name: hub へ ping(トンネル疎通)
+  ansible.builtin.command: ping -c 2 -W 3 {{ wg_hub_address }}
+  changed_when: false
+  become: true
+
+- name: 他ノードへの経路が LAN 直通であることを確認
+  ansible.builtin.command: >-
+    ip route get
+    {{ hostvars[(groups['k8s_cluster'] | difference([inventory_hostname]) | first)].ansible_host }}
+  register: wireguard_route_check
+  changed_when: false
+  failed_when: "'dev ' + wg_interface in wireguard_route_check.stdout"
+
+- name: main テーブル除外の ip rule が存在することを確認
+  ansible.builtin.command: ip rule show priority 100
+  register: wireguard_rule_check
+  changed_when: false
+  failed_when: >-
+    lan_cidr not in wireguard_rule_check.stdout
+    or pod_cidr not in wireguard_rule_check.stdout
+    or service_cidr not in wireguard_rule_check.stdout

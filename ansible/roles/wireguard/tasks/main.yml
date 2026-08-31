@@ -1,0 +1,82 @@
+- name: wg 鍵が実鍵で揃っていることを確認(preflight)
+  ansible.builtin.assert:
+    that:
+      - wg_private_key is defined
+      - wg_public_key != "REPLACE_WITH_REAL_PUBKEY"
+    fail_msg: "make wg-keygen HOST={{ inventory_hostname }} で鍵を生成すること"
+
+- name: hub は全 spoke の公開鍵が実鍵であることを確認
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].wg_public_key is defined
+      - hostvars[item].wg_public_key != "REPLACE_WITH_REAL_PUBKEY"
+    fail_msg: "make wg-keygen HOST={{ item }} で鍵を生成すること"
+  loop: "{{ groups['k8s_cluster'] }}"
+  when: wg_role == "hub"
+
+- name: spoke は hub の公開鍵が実鍵であることを確認
+  ansible.builtin.assert:
+    that:
+      - hostvars['linode-gw'].wg_public_key is defined
+      - hostvars['linode-gw'].wg_public_key != "REPLACE_WITH_REAL_PUBKEY"
+  when: wg_role == "spoke"
+
+- name: wireguard を導入
+  ansible.builtin.apt:
+    name: wireguard
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: rp_filter を loose に設定(DNAT で wg0 から届く外部 src を落とさない)
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "2"
+    sysctl_file: /etc/sysctl.d/90-wireguard-rpfilter.conf
+    reload: true
+  loop:
+    - net.ipv4.conf.all.rp_filter
+    - net.ipv4.conf.default.rp_filter
+  become: true
+
+- name: wg0.conf を配布
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: /etc/wireguard/{{ wg_interface }}.conf
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Sync WireGuard config
+
+- name: wg-quick を有効化・起動
+  ansible.builtin.systemd_service:
+    name: wg-quick@{{ wg_interface }}
+    enabled: true
+    state: started
+  become: true
+
+- name: nftables ルールを配布(hub のみ)
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  become: true
+  notify: Reload nftables
+  when: wg_role == "hub"
+
+- name: nftables を有効化・起動(hub のみ)
+  ansible.builtin.systemd_service:
+    name: nftables
+    enabled: true
+    state: started
+  become: true
+  when: wg_role == "hub"
+
+- name: 疎通を検証(spoke のみ)
+  ansible.builtin.import_tasks: verify.yml
+  when: wg_role == "spoke"

@@ -1,0 +1,42 @@
+# {{ ansible_managed }}
+# 設計: docs/wireguard.md
+{% if wg_role == "hub" %}
+[Interface]
+Address    = {{ wg_address }}/{{ wg_cidr.split('/')[1] }}
+ListenPort = {{ wg_port }}
+PrivateKey = {{ wg_private_key }}
+MTU        = {{ wg_mtu }}
+
+{% for h in groups['k8s_cluster'] | sort %}
+[Peer]  # {{ h }}
+PublicKey  = {{ hostvars[h].wg_public_key }}
+AllowedIPs = {{ hostvars[h].wg_address }}/32
+
+{% endfor %}
+{% for peer in wg_extra_peers %}
+[Peer]  # {{ peer.name }}
+PublicKey  = {{ peer.public_key }}
+AllowedIPs = {{ peer.allowed_ips }}
+
+{% endfor %}
+{% else %}
+[Interface]
+Address    = {{ wg_address }}/32
+PrivateKey = {{ wg_private_key }}
+MTU        = {{ wg_mtu }}
+{# フルトンネル時、wg-quick は fwmark + policy routing を設定する。
+   suppress_prefixlength 0 により main テーブルの具体的経路が勝つが、
+   LAN / Pod / Service 向けは念のため明示的に main を固定する #}
+{% for cidr in [lan_cidr, pod_cidr, service_cidr] %}
+PostUp   = ip rule add to {{ cidr }} lookup main priority 100
+{% endfor %}
+{% for cidr in [lan_cidr, pod_cidr, service_cidr] %}
+PostDown = ip rule del to {{ cidr }} lookup main priority 100
+{% endfor %}
+
+[Peer]  # linode-gw (hub)
+PublicKey           = {{ hostvars['linode-gw'].wg_public_key }}
+Endpoint            = {{ gateway_public_ip }}:{{ wg_port }}
+AllowedIPs          = 0.0.0.0/0
+PersistentKeepalive = 25
+{% endif %}

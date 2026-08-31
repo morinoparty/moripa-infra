@@ -1,0 +1,5 @@
+- name: Linode ゲートウェイ(WireGuard ハブ + NAT)を構成
+  hosts: gateway
+  roles:
+    - base
+    - wireguard

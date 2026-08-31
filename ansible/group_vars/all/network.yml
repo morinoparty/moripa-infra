@@ -14,6 +14,14 @@ wg_hub_address: 10.100.0.1
 wg_port: 51820
 wg_mtu: 1420
 
+# Linode 側 WAN NIC(Linode の Ubuntu イメージは eth0)
+gateway_wan_interface: eth0
+
+# inventory 外の WireGuard peer(管理者マシン等)。
+# SSH は wg 経由のみの運用なので、管理者マシンを必ずここに登録する
+wg_extra_peers: []
+#  - { name: admin, public_key: "REPLACE_WITH_REAL_PUBKEY", allowed_ips: 10.100.0.100/32 }
+
 pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
 kube_vip_address: 192.168.10.10
@@ -25,3 +33,6 @@ dnat_rules:
   - { name: minecraft, proto: tcp, dport: 25565, target: 10.100.0.11, tport: 30565 }  # NodePort (eTP Local)
   - { name: http, proto: tcp, dport: 80, target: 10.100.0.11, tport: 80 }    # Cilium Gateway (hostNetwork)
   - { name: https, proto: tcp, dport: 443, target: 10.100.0.11, tport: 443 }
+
+# WireGuard インターフェース名
+wg_interface: wg0

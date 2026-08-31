@@ -1,0 +1,54 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+# hub(Linode)のファイアウォール + NAT。
+# 外側に Linode Cloud Firewall(terraform 管理)があり二重防御になっている。
+# DNAT 対象ポートは terraform の public_tcp_ports とも一致させること。
+
+flush ruleset
+
+table inet filter {
+  chain input {
+    type filter hook input priority filter; policy drop;
+    ct state established,related accept
+    ct state invalid drop
+    iif "lo" accept
+    ip protocol icmp accept
+    meta l4proto ipv6-icmp accept
+    udp dport {{ wg_port }} accept
+    # SSH はホストでは全面許可し、公開可否は Cloud Firewall 側で制御する
+    # (定常状態は bootstrap_ssh_cidrs=[] で公開されず、wg 経由のみ届く)
+    tcp dport 22 accept
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    # Pod egress は wg(MTU {{ wg_mtu }})を通るため TCP MSS を経路 MTU に clamp
+    tcp flags syn tcp option maxseg size set rt mtu
+    ct state established,related accept
+    ct state invalid drop
+    # spoke → internet(フルトンネルの egress)
+    iifname "{{ wg_interface }}" oifname "{{ gateway_wan_interface }}" accept
+    # wg peer 同士(管理者マシン → ノードの SSH 等)
+    iifname "{{ wg_interface }}" oifname "{{ wg_interface }}" accept
+{% for r in dnat_rules %}
+    # DNAT: {{ r.name }}
+    iifname "{{ gateway_wan_interface }}" oifname "{{ wg_interface }}" ip daddr {{ r.target }} {{ r.proto }} dport {{ r.tport }} accept
+{% endfor %}
+  }
+}
+
+table inet nat {
+  chain prerouting {
+    type nat hook prerouting priority dstnat;
+{% for r in dnat_rules %}
+    iifname "{{ gateway_wan_interface }}" {{ r.proto }} dport {{ r.dport }} dnat ip to {{ r.target }}:{{ r.tport }}
+{% endfor %}
+  }
+
+  chain postrouting {
+    type nat hook postrouting priority srcnat;
+    # egress のみ masquerade(DNAT の戻りは conntrack が処理するため
+    # クライアント実IPが spoke まで保持される)
+    oifname "{{ gateway_wan_interface }}" ip saddr {{ wg_cidr }} masquerade
+  }
+}

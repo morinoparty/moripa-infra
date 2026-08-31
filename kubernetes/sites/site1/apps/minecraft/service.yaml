@@ -1,0 +1,19 @@
+# 公開経路: Linode nftables が 25565 → 10.100.0.11:30565 (site1-node1 の wg IP) に DNAT。
+# externalTrafficPolicy: Local により SNAT されず、クライアントの実IPが
+# Pod まで届く(IP BAN が機能する)。その代わり Pod は DNAT 先ノードに
+# 存在する必要があるため、statefulset.yaml の nodeSelector でピンする。
+# Cluster にすると別ノード転送時に SNAT され全接続がノードIPに見えるので不採用。
+apiVersion: v1
+kind: Service
+metadata:
+  name: minecraft
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app: minecraft
+  ports:
+    - name: minecraft
+      port: 25565
+      targetPort: 25565
+      nodePort: 30565  # network.yml の dnat_rules(minecraft.tport)と一致させる

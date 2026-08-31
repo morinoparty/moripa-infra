@@ -1,11 +1,15 @@
 # 先頭 CP で実行する(playbooks/cluster.yml)。KUBECONFIG は admin.conf。
 
-- name: cilium values (git 管理) を読み込む
+# common → site の順でマージ(ArgoCD の valueFiles と同一順)
+- name: cilium values (git 管理) を読み込んでマージ
   ansible.builtin.set_fact:
     k8s_bootstrap_cilium_values: >-
-      {{ lookup('ansible.builtin.file',
-                playbook_dir + '/../../kubernetes/infrastructure/cilium/values.yaml')
-         | from_yaml }}
+      {{ (lookup('ansible.builtin.file',
+                 playbook_dir + '/../../kubernetes/common/cilium/values.yaml')
+          | from_yaml)
+         | combine(lookup('ansible.builtin.file',
+                          playbook_dir + '/../../' + cilium_site_values_relpath)
+                   | from_yaml, recursive=True) }}
 
 # group_vars と git 上の values の乖離を実行前に強制検出する。
 # ArgoCD が同じ values で引き取るため、ここの整合が diff ゼロの前提になる
@@ -20,8 +24,8 @@
       - pod_cidr in k8s_bootstrap_cilium_values.ipam.operator.clusterPoolIPv4PodCIDRList
       - wg_interface in k8s_bootstrap_cilium_values.devices
     fail_msg: >-
-      kubernetes/infrastructure/cilium/values.yaml が
-      ansible/group_vars/all/network.yml と一致していない(make check-consistency 参照)
+      cilium values (common + {{ cilium_site_values_relpath }}) が
+      ansible/group_vars と一致していない(make check-consistency 参照)
 
 - name: helm バイナリを導入
   ansible.builtin.unarchive:
@@ -43,10 +47,17 @@
   changed_when: "'serverside-applied' in k8s_bootstrap_gwapi.stdout"
   become: true
 
-- name: cilium values をノードへ配置
+- name: cilium values (common) をノードへ配置
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../kubernetes/infrastructure/cilium/values.yaml"
-    dest: /etc/kubernetes/cilium-values.yaml
+    src: "{{ playbook_dir }}/../../kubernetes/common/cilium/values.yaml"
+    dest: /etc/kubernetes/cilium-values-common.yaml
+    mode: "0644"
+  become: true
+
+- name: cilium values (site) をノードへ配置
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../{{ cilium_site_values_relpath }}"
+    dest: /etc/kubernetes/cilium-values-site.yaml
     mode: "0644"
   become: true
 
@@ -58,7 +69,8 @@
     chart_version: "{{ cilium_version }}"
     release_namespace: kube-system
     values_files:
-      - /etc/kubernetes/cilium-values.yaml
+      - /etc/kubernetes/cilium-values-common.yaml
+      - /etc/kubernetes/cilium-values-site.yaml
     kubeconfig: /etc/kubernetes/admin.conf
     wait: true
     wait_timeout: 10m
@@ -70,7 +82,7 @@
     -o jsonpath={.spec.taints[*].key}
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
-  loop: "{{ groups['k8s_control_plane'] }}"
+  loop: "{{ groups[k8s_cp_group] }}"
   register: k8s_bootstrap_taints
   changed_when: false
   become: true

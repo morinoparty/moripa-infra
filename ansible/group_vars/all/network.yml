@@ -1,7 +1,7 @@
-# ネットワーク値の唯一の正(README のテーブルはここの写し)
-# LAN CIDR を変更する場合: このファイル + inventory/hosts.yml の ansible_host を修正
+# ネットワーク値の唯一の正(README のテーブルはここの写し)。
+# 拠点固有の値(lan_cidr / kube_vip_address 等)は group_vars/site1.yml / site2.yml。
+# LAN CIDR を変更する場合: site*.yml + inventory/hosts.yml の ansible_host を修正
 
-lan_cidr: 192.168.10.0/24
 # ノードの LAN NIC。デフォルト経路の NIC を自動検出(wg 確立前提の初回は LAN NIC = default)。
 # NIC 名が確定したら "enp1s0" 等で固定推奨
 lan_interface: "{{ ansible_default_ipv4.interface }}"
@@ -22,16 +22,18 @@ gateway_wan_interface: eth0
 wg_extra_peers: []
 #  - { name: admin, public_key: "REPLACE_WITH_REAL_PUBKEY", allowed_ips: 10.100.0.100/32 }
 
+# Pod / Service CIDR は両拠点で同一値を使う。クラスタ同士は接続しないため
+# 重複しても問題ない(将来 cluster mesh 等で接続するなら再IP設計が必要 →
+# docs/multi-site.md)
 pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
-kube_vip_address: 192.168.10.10
 kube_api_port: 6443
 
 # Linode 側 nftables の DNAT ルール(target は各ノードの wg アドレス)。
 # terraform/envs/prod の public_tcp_ports と dport が一致すること(check-consistency で検査)
 dnat_rules:
-  - { name: minecraft, proto: tcp, dport: 25565, target: 10.100.0.11, tport: 30565 }  # NodePort (eTP Local)
-  - { name: http, proto: tcp, dport: 80, target: 10.100.0.11, tport: 80 }    # Cilium Gateway (hostNetwork)
+  - { name: minecraft, proto: tcp, dport: 25565, target: 10.100.0.11, tport: 30565 }  # site1-node1 NodePort (eTP Local)
+  - { name: http, proto: tcp, dport: 80, target: 10.100.0.11, tport: 80 }    # site1 Cilium Gateway (hostNetwork)
   - { name: https, proto: tcp, dport: 443, target: 10.100.0.11, tport: 443 }
 
 # WireGuard インターフェース名

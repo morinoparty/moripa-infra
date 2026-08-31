@@ -1,55 +1,62 @@
-# 2拠点目への拡張パス(設計メモ)
+# 2拠点アーキテクチャ
 
-現状は単一拠点(6台が同一LAN)。将来2拠点目に worker を追加する場合の
-判断材料と必要な変更をここに残す。**実装は行っていない。**
+本リポジトリは **2拠点・拠点ごとに独立した k8s クラスタ**を実装している。
+このドキュメントはその設計判断と、拠点の追加・変更時の指針を記す。
 
-## 原則
+## なぜ「1つのクラスタを2拠点に跨がせる」のではなく「独立クラスタ×2」なのか
 
-- **control-plane(etcd)は主拠点に3台固定のまま動かさない**。
-  2拠点では etcd クォーラムのタイブレーカーが存在せず、対称な冗長化は不可能。
-  拠点間リンク断のとき「主拠点だけでクラスタ生存、第2拠点の worker は
-  NotReady になるだけ」という縮退が最も安全
-- 第2拠点の台数を増やしすぎない(過半数の Pod が NotReady 側に寄ると縮退の意味がない)
+- **etcd クォーラム**: 2拠点では過半数を持つ側が落ちるとクラスタ全体が停止する。
+  タイブレーカーになる第3拠点がなく、対称な冗長化が原理的に不可能
+  (Nanode は非力すぎて etcd メンバーには不適)
+- **拠点間リンクへの依存**: 跨がせると etcd / API / Pod 通信が拠点間トンネルの
+  品質に常時依存する。独立クラスタなら拠点間リンク断でも両拠点とも無傷
+- **障害ドメインの分離**: ArgoCD も拠点ごとに持つ。片拠点が全損しても
+  もう片方の GitOps は動き続ける
 
-## 必要な変更
+## 構成の要点
 
-### 1. 拠点間トンネル(Linode を経由しない)
+| 項目 | site1 | site2 |
+|---|---|---|
+| LAN CIDR | 192.168.10.0/24 | 192.168.20.0/24 |
+| kube-vip VIP | 192.168.10.10 | 192.168.20.10 |
+| wg アドレス | 10.100.0.11–13 | 10.100.0.21–23 |
+| ノード | site1-node1〜3(全部CP) | site2-node1〜3(全部CP) |
 
-第2拠点のノード間通信(kubelet→API、VXLAN)を Nanode 経由にしてはいけない
-(1TB/月・共有1vCPU がクラスタ内トラフィックで即死する)。
+- WireGuard は従来どおり **Linode をハブとする hub-and-spoke**。両拠点の全ノードが
+  spoke であり、拠点間に直接トンネルは張らない(クラスタ間通信が無いため不要)
+- ArgoCD は各クラスタが自分の分を self-host し、
+  `kubernetes/common/`(共通ベース)+ `kubernetes/sites/<site>/`(サイト固有)を同期する
+- 管理者は wg 経由で両拠点のノード・APIへ到達できる
+  (kubeadm の certSANs に各ノードの wg アドレスを含めている)
 
-- 拠点間に **site-to-site WireGuard(wg1)** を張る。どちらかの拠点に
-  固定IP or DDNS + ポート開放が必要
-- 両拠点とも開放不可の場合のみ Linode 中継を検討するが、その場合は
-  Nanode のプラン増強が前提
+## 重要な制約: Pod / Service CIDR は両拠点で同一値
 
-### 2. ルーティングと MTU
+10.244.0.0/16 / 10.96.0.0/12 を両クラスタで使い回している。
+**クラスタ同士を接続しない前提でのみ成立する**。将来 Cilium Cluster Mesh や
+クラスタ間の Pod 直接通信をやりたくなったら、これは設定変更ではなく
+**片方のクラスタの再IP設計(実質作り直し)**になる。その予定が少しでもあるなら
+先に site2 の CIDR をずらしておくこと(例: pod 10.245.0.0/16)。
 
-- 「ノード間トラフィックは LAN 直通」という前提が崩れる:
-  - spoke の `ip rule ... lookup main` 除外に**リモート拠点の LAN CIDR を追加**
-  - wg1 経由の経路を main テーブルに追加(static route)
-- **MTU**: 第2拠点向け VXLAN は wg1(MTU 1420)の内側を通るため、
-  クラスタ全体の MTU を **1370**(1420 − VXLAN 50)へ引き下げる必要がある
-  (Cilium の `MTU` 設定。全ノード再起動を伴う変更なので計画的に)
-- Cilium は VXLAN トンネルモードなので、L2 が分かれても Pod 通信自体は動く
-  (この将来性が VXLAN を選んだ理由の一つ)
+## 公開サービスと拠点
 
-### 3. Ansible / inventory
+Linode の `dnat_rules`(ansible/group_vars/all/network.yml)の `target` を
+どの拠点のノードの wg アドレスにするかでサービスの提供拠点が決まる。
+現状はすべて site1。site2 で公開するサービスは target を 10.100.0.2x にして
+追加する。Minecraft のような eTP Local + node ピン構成では、
+Pod の nodeSelector と dnat target の対応を check-consistency が検査する。
 
-- `k8s_workers_site2` グループを追加し、`lan_cidr` / `lan_interface` を
-  拠点別の group_vars に分離
-- wireguard ロールに wg1(site-to-site)のテンプレートを追加
+## 拠点を追加する場合(site3)
 
-### 4. 公開経路
+1. `ansible/inventory/hosts.yml` に site3 グループを追加(wg は 10.100.0.31– を採番)
+2. `ansible/group_vars/site3.yml` を作成(lan_cidr / kube_vip_address / グループ名 / values パス)
+3. `kubernetes/sites/site3/` を site2 からコピーして site 名を置換
+4. `playbooks/cluster.yml` に site3 の CP play を追加
+5. Makefile の KUSTOMIZE_DIRS、CI の kustomize リスト、
+   `scripts/check_consistency.py` の SITES に site3 を追加
+6. wg 鍵生成 → `make gateway`(hub の peer が増える)→ `make cluster`
+   → `make bootstrap-argocd SITE=site3`
 
-- DNAT 先を第2拠点のノードにする場合、経路は
-  Linode → wg0 → 主拠点ノード…ではなく Linode → 第2拠点ノードの wg0 spoke
-  で直接届く(hub-and-spoke のまま)。戻りもフルトンネルで対称
-- ただし Minecraft の eTP Local + nodeSelector ピンの配置先は要再検討
+## 既存拠点のクラスタに worker を足す場合
 
-## 判断チェックリスト(拡張前に確認)
-
-- [ ] 拠点間の RTT と帯域(iperf3 / ping)。RTT > 20ms なら Pod 配置を拠点内で完結させる設計に
-- [ ] どちらの拠点でポート開放できるか
-- [ ] MTU 1370 への引き下げの影響範囲(全ノード)
-- [ ] 第2拠点の障害時に許容できるサービス縮退の範囲
+inventory の `siteN_workers` にホストを追加して wg 鍵を生成し、
+`make cluster` を再実行するだけ(join は冪等)。

@@ -1,0 +1,5 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# ArgoCD 本体は共通ベース(拠点差分が出たらここに patch を追加)
+resources:
+  - ../../../../common/argocd

@@ -15,10 +15,13 @@
 | ホスト | wg アドレス | 役割 |
 |---|---|---|
 | linode-gw | 10.100.0.1/24 | ハブ。ListenPort 51820。IP forward + masquerade |
-| node1–6 | 10.100.0.11–16/32 | spoke。NAT 裏なので `PersistentKeepalive = 25` |
+| site1-node1–3 | 10.100.0.11–13/32 | spoke。NAT 裏なので `PersistentKeepalive = 25` |
+| site2-node1–3 | 10.100.0.21–23/32 | spoke。同上 |
+| 管理者マシン | 10.100.0.100/32 | spoke(`wg_extra_peers`)。SSH/kubectl 用の管理経路 |
 
-ノード同士は wg 経由で通信**しない**(同一LANで直接通信)。ハブ側の
-AllowedIPs は各 peer の /32 のみ。
+同一拠点のノード同士は wg 経由で通信**しない**(拠点 LAN で直接通信)。
+拠点間はクラスタレベルで接続しないため、拠点間トンネルも張らない。
+ハブ側の AllowedIPs は各 peer の /32 のみ。
 
 ## 最重要の設計制約: k8s トラフィックをトンネルに乗せない
 

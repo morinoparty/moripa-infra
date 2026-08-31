@@ -1,0 +1,3 @@
+# make wg-keygen HOST=site2-node1 で生成した公開鍵に置き換えること
+# (秘密鍵は同ディレクトリの wireguard.sops.yml に sops 暗号化で格納される)
+wg_public_key: REPLACE_WITH_REAL_PUBKEY

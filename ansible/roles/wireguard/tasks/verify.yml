@@ -10,7 +10,7 @@
 - name: 他ノードへの経路が LAN 直通であることを確認
   ansible.builtin.command: >-
     ip route get
-    {{ hostvars[(groups['k8s_cluster'] | difference([inventory_hostname]) | first)].ansible_host }}
+    {{ hostvars[(groups[site_name] | difference([inventory_hostname]) | first)].ansible_host }}
   register: wireguard_route_check
   changed_when: false
   failed_when: "'dev ' + wg_interface in wireguard_route_check.stdout"

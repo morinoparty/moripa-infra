@@ -1,3 +1,0 @@
-# kube-vip が VIP を張る NIC。wg0 の自動検出事故を防ぐため必ず LAN NIC を指す
-# (NIC 名確定後は "enp1s0" 等で固定推奨)
-kube_vip_interface: "{{ lan_interface }}"

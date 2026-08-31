@@ -59,11 +59,14 @@ endif
 # ---- ArgoCD bootstrap(一度きりの操作)-------------------------------------
 
 .PHONY: bootstrap-argocd
-bootstrap-argocd: ## クラスタ構築後に ArgoCD を導入し app-of-apps を起動
-	kubectl apply -k kubernetes/bootstrap/argocd
-	sops -d kubernetes/bootstrap/secrets/sops-age.sops.yaml | kubectl apply -f -
-	sops -d kubernetes/bootstrap/secrets/repo-moripa-infra.sops.yaml | kubectl apply -f -
-	kubectl apply -f kubernetes/bootstrap/root-app.yaml
+bootstrap-argocd: ## 使い方: make bootstrap-argocd SITE=site1 (KUBECONFIG はその拠点のクラスタを指すこと)
+ifndef SITE
+	$(error SITE を指定すること: make bootstrap-argocd SITE=site1)
+endif
+	kubectl apply -k kubernetes/sites/$(SITE)/bootstrap/argocd
+	sops -d kubernetes/sites/$(SITE)/bootstrap/secrets/sops-age.sops.yaml | kubectl apply -f -
+	sops -d kubernetes/sites/$(SITE)/bootstrap/secrets/repo-moripa-infra.sops.yaml | kubectl apply -f -
+	kubectl apply -f kubernetes/sites/$(SITE)/bootstrap/root-app.yaml
 
 # ---- 検証 -------------------------------------------------------------------
 
@@ -84,23 +87,31 @@ lint-ansible:
 	  [ -e "$$pb" ] && ../$(VENV)/bin/ansible-playbook --syntax-check "$$pb"; done; true
 	cd ansible && ../$(VENV)/bin/ansible-inventory --list > /dev/null
 
-lint-helm: ## Cilium values が chart に対して有効か検証
-	@if [ -f kubernetes/infrastructure/cilium/values.yaml ]; then \
-	  ver=$$(grep -oP 'cilium_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+lint-helm: ## Cilium values (common + 各 site) が chart に対して有効か検証
+	@ver=$$(grep -oP 'cilium_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	for s in site1 site2; do \
 	  helm template cilium cilium --repo https://helm.cilium.io \
 	    --version $$ver -n kube-system \
-	    -f kubernetes/infrastructure/cilium/values.yaml > /dev/null && echo "cilium values OK"; \
-	fi
+	    -f kubernetes/common/cilium/values.yaml \
+	    -f kubernetes/sites/$$s/infrastructure/cilium/values.yaml > /dev/null \
+	    && echo "cilium values OK ($$s)" || exit 1; \
+	done
 
 KUSTOMIZE_DIRS := \
-  kubernetes/bootstrap/argocd \
-  kubernetes/bootstrap/applications \
-  kubernetes/infrastructure/gateway-api-crds \
-  kubernetes/infrastructure/cert-manager \
-  kubernetes/infrastructure/ingress \
-  kubernetes/infrastructure/monitoring \
-  kubernetes/apps \
-  kubernetes/apps/minecraft
+  kubernetes/common/argocd \
+  kubernetes/common/gateway-api-crds \
+  kubernetes/common/cert-manager \
+  kubernetes/sites/site1/bootstrap/argocd \
+  kubernetes/sites/site1/bootstrap/applications \
+  kubernetes/sites/site1/infrastructure/ingress \
+  kubernetes/sites/site1/infrastructure/monitoring \
+  kubernetes/sites/site1/apps \
+  kubernetes/sites/site1/apps/minecraft \
+  kubernetes/sites/site2/bootstrap/argocd \
+  kubernetes/sites/site2/bootstrap/applications \
+  kubernetes/sites/site2/infrastructure/ingress \
+  kubernetes/sites/site2/infrastructure/monitoring \
+  kubernetes/sites/site2/apps
 
 lint-kustomize: ## ksops generator(秘密)を含む overlay は対象外(CI と同方針)
 	@for d in $(KUSTOMIZE_DIRS); do \

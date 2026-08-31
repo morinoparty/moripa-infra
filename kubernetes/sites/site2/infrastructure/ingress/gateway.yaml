@@ -1,0 +1,28 @@
+# 共有 Gateway。GatewayClass "cilium" は Cilium operator が自動作成する。
+# gatewayAPI.hostNetwork.enabled=true(cilium values)により Envoy がノードの
+# :80/:443 に直接 listen し、Linode の DNAT(→ node wg IP)をそのまま受ける。
+# HTTPS listener は ClusterIssuer + Certificate を用意してから追加する。
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: ingress
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+    # - name: https
+    #   protocol: HTTPS
+    #   port: 443
+    #   tls:
+    #     mode: Terminate
+    #     certificateRefs:
+    #       - name: wildcard-morino-party-tls
+    #   allowedRoutes:
+    #     namespaces:
+    #       from: All

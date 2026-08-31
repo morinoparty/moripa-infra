@@ -1,0 +1,4 @@
+# site2 固有の Cilium 設定(common/cilium/values.yaml の後に読み込まれ上書きする)
+
+# この拠点の kube-vip VIP(kube-proxy 不在でも API へ到達するための直指定)
+k8sServiceHost: 192.168.20.10

@@ -1,0 +1,35 @@
+# Ansible が投入した Cilium Helm リリースを ArgoCD が引き取る。
+# multi-source: chart は helm.cilium.io、values は git の同一ファイル
+# (common → site の順で読む。Ansible 側と同一)。
+# targetRevision は ansible/group_vars/all/versions.yml の cilium_version と
+# 一致させること(make check-consistency で検査)。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  sources:
+    - repoURL: https://helm.cilium.io
+      chart: cilium
+      targetRevision: 1.19.7
+      helm:
+        releaseName: cilium
+        valueFiles:
+          - $values/kubernetes/common/cilium/values.yaml
+          - $values/kubernetes/sites/site1/infrastructure/cilium/values.yaml
+    - repoURL: git@github.com:morinoparty/moripa-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: false  # CNI は prune しない(安全側)
+    syncOptions:
+      - ServerSideApply=true

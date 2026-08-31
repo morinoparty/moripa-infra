@@ -1,33 +1,41 @@
-- name: 共通設定 + WireGuard spoke
+- name: 共通設定 + WireGuard spoke(全拠点)
   hosts: k8s_cluster
   roles:
     - base
     - wireguard
 
-- name: k8s 前提(containerd / kubeadm)
+- name: k8s 前提(containerd / kubeadm)(全拠点)
   hosts: k8s_cluster
   roles:
     - k8s_prereq
 
 # serial: 1 で先頭 CP の init 完了後に残りが順に join する
-# (etcd メンバー追加の同時実行を避ける)
-- name: control-plane を構築
-  hosts: k8s_control_plane
+# (etcd メンバー追加の同時実行を避ける)。拠点ごとに独立したクラスタ
+- name: site1 control-plane を構築
+  hosts: site1_control_plane
   serial: 1
   roles:
     - role: k8s_bootstrap
       vars:
         k8s_bootstrap_mode: control_plane
 
-- name: worker を join
-  hosts: k8s_workers
+- name: site2 control-plane を構築
+  hosts: site2_control_plane
+  serial: 1
+  roles:
+    - role: k8s_bootstrap
+      vars:
+        k8s_bootstrap_mode: control_plane
+
+- name: worker を join(現状は空グループ。ノード追加時に有効になる)
+  hosts: site1_workers:site2_workers
   roles:
     - role: k8s_bootstrap
       vars:
         k8s_bootstrap_mode: worker
 
-- name: Cilium を投入し、クラスタを検証
-  hosts: k8s_control_plane[0]
+- name: Cilium を投入し、各クラスタを検証
+  hosts: site1_control_plane[0]:site2_control_plane[0]
   roles:
     - role: k8s_bootstrap
       vars:

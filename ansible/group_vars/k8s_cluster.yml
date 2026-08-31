@@ -1,5 +1,9 @@
 wg_role: spoke
 ansible_user: "{{ admin_user }}"
 
+# kube-vip が VIP を張る NIC。wg0 の自動検出事故を防ぐため必ず LAN NIC を指す
+# (NIC 名確定後は "enp1s0" 等で固定推奨)
+kube_vip_interface: "{{ lan_interface }}"
+
 # 管理マシンが LAN 外にある場合は wg 経由 or ProxyJump を使う:
 # ansible_ssh_common_args: "-o ProxyJump={{ admin_user }}@{{ gateway_public_ip }}"

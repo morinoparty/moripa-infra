@@ -8,23 +8,27 @@
 
 ## 構成概要
 
+**2拠点構成**。各拠点が独立した k8s クラスタ(3台全部 control-plane・schedulable)
+と独立した ArgoCD を持つ。障害ドメインは完全に分離され、拠点間にクラスタの依存はない。
+
 ```
 [インターネット]
       │
 [Linode Nanode]  ← WireGuard ハブ / 出口 (10.100.0.1)
       │ wg0 (hub-and-spoke)
-      ├── node1 (10.100.0.11) ┐
-      ├── node2 (10.100.0.12) │
-      ├── node3 (10.100.0.13) │  自宅LAN上の k8s クラスタ
-      ├── node4 (10.100.0.14) │  (kubeadm + Cilium + ArgoCD)
-      ├── node5 (10.100.0.15) │
-      └── node6 (10.100.0.16) ┘
+      │
+      ├─ site1 (LAN 192.168.10.0/24, VIP .10)     ├─ site2 (LAN 192.168.20.0/24, VIP .10)
+      │   ├── site1-node1 (10.100.0.11) ┐         │   ├── site2-node1 (10.100.0.21) ┐
+      │   ├── site1-node2 (10.100.0.12) │ k8s     │   ├── site2-node2 (10.100.0.22) │ k8s
+      │   └── site1-node3 (10.100.0.13) ┘ cluster │   └── site2-node3 (10.100.0.23) ┘ cluster
+      │      (kubeadm + Cilium + ArgoCD)          │      (kubeadm + Cilium + ArgoCD)
 ```
 
 - 各ノードの**外向き通信は Linode 経由**(フルトンネル)。外部からは Linode の固定IPに見える
-- **ノード間通信(etcd / Pod / Service)は自宅LAN内で直接通信**し、トンネルを通らない
+- **クラスタ内通信(etcd / Pod / Service)は各拠点の LAN 内で直接通信**し、トンネルを通らない
   → 詳細は [docs/wireguard.md](docs/wireguard.md)
-- 外部公開はLinode 側の DNAT でトンネル越しにノードへ転送
+- 拠点間はクラスタレベルで**接続しない**(→ [docs/multi-site.md](docs/multi-site.md))
+- 外部公開は Linode 側の DNAT でトンネル越しに対象拠点のノードへ転送
 
 ## ディレクトリ構成
 
@@ -48,20 +52,26 @@ moripa-infra/
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
 │   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
 │   └── playbooks/              # site.yml = gateway.yml + cluster.yml
-├── kubernetes/                 # ArgoCD が watch する領域
-│   ├── bootstrap/
+├── kubernetes/                 # 各拠点の ArgoCD が watch する領域
+│   ├── common/                 # 両拠点共通のベース
 │   │   ├── argocd/             # 公式 manifest + ksops パッチ (kustomize)
-│   │   ├── secrets/            # out-of-band 投入する 2 Secret(sops 暗号化)
-│   │   ├── applications/       # app-of-apps(sync wave で順序制御)
-│   │   └── root-app.yaml
-│   ├── infrastructure/
+│   │   ├── cilium/values.yaml  # ★ Cilium 共通設定(site 側が VIP を上書き)
 │   │   ├── gateway-api-crds/   # Cilium より先に同期(wave -3)
-│   │   ├── cilium/values.yaml  # ★ Ansible と ArgoCD が共有する唯一の Cilium 設定
-│   │   ├── cert-manager/
-│   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80/:443)
-│   │   └── monitoring/
-│   └── apps/
-│       └── minecraft/          # eTP Local + DNAT 先ノードにピン
+│   │   └── cert-manager/
+│   └── sites/
+│       ├── site1/
+│       │   ├── bootstrap/
+│       │   │   ├── argocd/         # common/argocd の overlay
+│       │   │   ├── secrets/        # out-of-band 投入する 2 Secret(両拠点で共有鍵)
+│       │   │   ├── applications/   # site1 の app-of-apps(sync wave で順序制御)
+│       │   │   └── root-app.yaml
+│       │   ├── infrastructure/
+│       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
+│       │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80/:443)
+│       │   │   └── monitoring/
+│       │   └── apps/
+│       │       └── minecraft/          # eTP Local + DNAT 先ノードにピン
+│       └── site2/              # site1 と同構造(apps は空の雛形)
 ├── scripts/                    # check_consistency.py / check_secrets.sh
 ├── docs/                       # wireguard.md / runbook.md / multi-site.md
 └── .github/workflows/ci.yml    # make lint 相当の CI
@@ -73,13 +83,13 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 
 1. **Terraform**: Linode Nanode 作成 (`terraform/envs/prod`)
 2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables (masquerade / DNAT) を設定
-3. **Ansible `cluster.yml`**:
-   1. `base` + `wireguard`: 各ノードを spoke として接続
+3. **Ansible `cluster.yml`**(両拠点を順に処理):
+   1. `base` + `wireguard`: 全ノードを spoke として接続
    2. `k8s_prereq`: containerd / kubeadm 導入
-   3. `k8s_bootstrap`: `kubeadm init --skip-phases=addon/kube-proxy` → 各ノード join
-   4. Cilium を Helm で投入 (kube-proxy replacement 有効)
-4. **ArgoCD 導入**: `kubernetes/bootstrap/` を適用し、app-of-apps を起動
-5. 以降は ArgoCD が `kubernetes/infrastructure/` と `kubernetes/apps/` を同期。
+   3. `k8s_bootstrap`: 拠点ごとに `kubeadm init --skip-phases=addon/kube-proxy` → join
+   4. Cilium を Helm で投入 (kube-proxy replacement 有効、common + site values)
+4. **ArgoCD 導入**(拠点ごと): `make bootstrap-argocd SITE=site1` / `SITE=site2`
+5. 以降は各拠点の ArgoCD が `kubernetes/common/` + `kubernetes/sites/<site>/` を同期。
    Cilium の Helm リリースも ArgoCD が引き取る(同じ values を使うこと)
 
 ## 前提・未確定事項
@@ -92,13 +102,13 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | 項目 | 値 | 備考 |
 |---|---|---|
 | ノードの OS | Ubuntu 26.04.1 LTS server | 確定 |
-| クラスタ構成 | 3 control-plane (schedulable) + 3 worker | stacked etcd、API VIP は kube-vip |
-| 自宅 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.16、kube-vip VIP .10。6台が同一LANにいる前提。**この前提が崩れると WireGuard 設計の見直しが必要**([docs/multi-site.md](docs/multi-site.md)) |
-| WireGuard CIDR | 10.100.0.0/24 | LAN / Pod / Service と重複しないこと |
-| Pod CIDR | 10.244.0.0/16 | Cilium cluster-pool |
-| Service CIDR | 10.96.0.0/12 | kubeadm デフォルト |
-| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT。SSH は公開せず wg 経由のみ |
-| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える |
+| 拠点構成 | 2拠点 × 3台、拠点ごとに独立クラスタ | 各拠点 3台全部 control-plane(stacked etcd・schedulable)、API VIP は kube-vip |
+| site1 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.13、kube-vip VIP .10 |
+| site2 LAN CIDR | 192.168.20.0/24(提案値) | ノード .11–.13、kube-vip VIP .10 |
+| WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.13、site2 は .21–.23。LAN / Pod / Service と重複しないこと |
+| Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/multi-site.md](docs/multi-site.md)) |
+| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
+| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵と deploy key は両拠点共有 |
 
 ## 注意: Nanode の転送量上限
 

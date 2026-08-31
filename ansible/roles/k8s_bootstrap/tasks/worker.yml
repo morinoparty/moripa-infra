@@ -9,7 +9,7 @@
   block:
     - name: join コマンドを生成(先頭 CP で実行、保存しない)
       ansible.builtin.command: kubeadm token create --ttl 30m --print-join-command
-      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      delegate_to: "{{ groups[k8s_cp_group][0] }}"
       register: k8s_bootstrap_join_cmd
       changed_when: false
       no_log: true

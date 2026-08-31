@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+# kube-proxy は入れない(Cilium の kube-proxy replacement を使う)
+skipPhases:
+  - addon/kube-proxy
+nodeRegistration:
+  criSocket: unix:///run/containerd/containerd.sock
+localAPIEndpoint:
+  advertiseAddress: {{ ansible_host }}
+  bindPort: {{ kube_api_port }}
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: "{{ k8s_full_version }}"
+controlPlaneEndpoint: "{{ kube_vip_address }}:{{ kube_api_port }}"
+networking:
+  podSubnet: "{{ pod_cidr }}"
+  serviceSubnet: "{{ service_cidr }}"
+apiServer:
+  certSANs:
+    - "{{ kube_vip_address }}"
+{% for h in groups['k8s_control_plane'] %}
+    - "{{ hostvars[h].ansible_host }}"
+    - "{{ hostvars[h].wg_address }}"{# wg 経由の管理アクセス用 #}
+{% endfor %}
+# kubelet の cgroupDriver は v1.22+ デフォルトで systemd(containerd 側の
+# SystemdCgroup=true と一致)。明示不要

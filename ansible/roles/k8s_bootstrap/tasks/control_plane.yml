@@ -1,0 +1,108 @@
+- name: 先頭 control-plane かどうかを判定
+  ansible.builtin.set_fact:
+    k8s_bootstrap_is_first_cp: "{{ inventory_hostname == groups['k8s_control_plane'][0] }}"
+
+- name: join 済みかを確認
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_bootstrap_kubelet_conf
+  become: true
+
+- name: static pod manifest ディレクトリを作成
+  ansible.builtin.file:
+    path: /etc/kubernetes/manifests
+    state: directory
+    mode: "0755"
+  become: true
+
+# --- 先頭 CP: kubeadm init -----------------------------------------------------
+
+- name: 先頭 CP を初期化
+  when: k8s_bootstrap_is_first_cp
+  block:
+    - name: kubeadm config (v1beta4) を配置
+      ansible.builtin.template:
+        src: kubeadm-config.yaml.j2
+        dest: /etc/kubernetes/kubeadm-config.yaml
+        mode: "0600"
+      become: true
+
+    - name: admin.conf の有無を確認
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: k8s_bootstrap_admin_conf
+      become: true
+
+    # kubeadm >= 1.29 では init 直後の admin.conf は cluster-admin ではないため、
+    # 初回のみ super-admin.conf を参照させる(でないと kube-vip が起動できず
+    # init の API 待ちがデッドロックする)。init 完了後に admin.conf へ戻す。
+    - name: kube-vip static pod を配置(初回は super-admin.conf 参照)
+      ansible.builtin.template:
+        src: kube-vip.yaml.j2
+        dest: /etc/kubernetes/manifests/kube-vip.yaml
+        mode: "0600"
+      vars:
+        kube_vip_kubeconfig: >-
+          {{ '/etc/kubernetes/admin.conf' if k8s_bootstrap_admin_conf.stat.exists
+             else '/etc/kubernetes/super-admin.conf' }}
+      become: true
+
+    - name: kubeadm init を実行(冪等)
+      ansible.builtin.command:
+        cmd: kubeadm init --config /etc/kubernetes/kubeadm-config.yaml --upload-certs
+        creates: /etc/kubernetes/admin.conf
+      become: true
+
+    - name: kube-vip を admin.conf 参照に戻す
+      ansible.builtin.template:
+        src: kube-vip.yaml.j2
+        dest: /etc/kubernetes/manifests/kube-vip.yaml
+        mode: "0600"
+      vars:
+        kube_vip_kubeconfig: /etc/kubernetes/admin.conf
+      become: true
+
+# --- 残りの CP: kubeadm join --control-plane -----------------------------------
+
+- name: 残りの CP を join
+  when: not k8s_bootstrap_is_first_cp and not k8s_bootstrap_kubelet_conf.stat.exists
+  block:
+    # join 前に配置しておく(kubelet は join 完了後に static pod として起動する)
+    - name: kube-vip static pod を配置
+      ansible.builtin.template:
+        src: kube-vip.yaml.j2
+        dest: /etc/kubernetes/manifests/kube-vip.yaml
+        mode: "0600"
+      vars:
+        kube_vip_kubeconfig: /etc/kubernetes/admin.conf
+      become: true
+
+    - name: join コマンドを生成(先頭 CP で実行、保存しない)
+      ansible.builtin.command: kubeadm token create --ttl 30m --print-join-command
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      register: k8s_bootstrap_join_cmd
+      changed_when: false
+      no_log: true
+      become: true
+
+    - name: certificate key を生成(先頭 CP で実行、保存しない)
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        kubeadm init phase upload-certs --upload-certs | tail -1
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      register: k8s_bootstrap_cert_key
+      changed_when: false
+      no_log: true
+      become: true
+
+    - name: control-plane として join
+      ansible.builtin.command:
+        cmd: >-
+          {{ k8s_bootstrap_join_cmd.stdout }}
+          --control-plane
+          --certificate-key {{ k8s_bootstrap_cert_key.stdout }}
+        creates: /etc/kubernetes/kubelet.conf
+      no_log: true
+      become: true

@@ -1,0 +1,5 @@
+- name: ゲートウェイを構成
+  ansible.builtin.import_playbook: gateway.yml
+
+- name: クラスタを構成
+  ansible.builtin.import_playbook: cluster.yml

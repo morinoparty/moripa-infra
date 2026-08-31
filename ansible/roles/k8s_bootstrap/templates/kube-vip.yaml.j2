@@ -1,0 +1,39 @@
+# {{ ansible_managed }}
+# kube-vip static pod (ARP mode, control-plane VIP)
+# kube_vip_kubeconfig はタスク側から渡される
+# (init 前のみ super-admin.conf、それ以外は admin.conf)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+    - name: kube-vip
+      image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+      imagePullPolicy: IfNotPresent
+      args: [manager]
+      env:
+        - { name: vip_arp, value: "true" }
+        - { name: port, value: "{{ kube_api_port }}" }
+        # LAN NIC に明示ピン(wg0 が存在するホストなので自動検出は禁止)
+        - { name: vip_interface, value: "{{ kube_vip_interface }}" }
+        - { name: vip_subnet, value: "32" }
+        - { name: address, value: "{{ kube_vip_address }}" }
+        - { name: cp_enable, value: "true" }
+        - { name: cp_namespace, value: kube-system }
+        - { name: vip_leaderelection, value: "true" }
+        - { name: vip_leaseduration, value: "5" }
+        - { name: vip_renewdeadline, value: "3" }
+        - { name: vip_retryperiod, value: "1" }
+      securityContext:
+        capabilities:
+          add: [NET_ADMIN, NET_RAW]
+      volumeMounts:
+        - mountPath: /etc/kubernetes/admin.conf
+          name: kubeconfig
+  volumes:
+    - name: kubeconfig
+      hostPath:
+        path: {{ kube_vip_kubeconfig }}

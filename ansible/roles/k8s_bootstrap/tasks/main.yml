@@ -1,0 +1,6 @@
+# k8s_bootstrap_mode で動作を切り替える(playbooks/cluster.yml が指定):
+#   control_plane : kubeadm init(先頭CP)/ join --control-plane(残りCP)
+#   worker        : kubeadm join
+#   cilium        : Gateway API CRD + Cilium Helm 投入 + taint 除去 + 検証
+- name: モード別タスクを実行
+  ansible.builtin.include_tasks: "{{ k8s_bootstrap_mode }}.yml"

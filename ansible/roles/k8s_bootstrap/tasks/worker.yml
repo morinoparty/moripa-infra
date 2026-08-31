@@ -1,0 +1,23 @@
+- name: join 済みかを確認
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: k8s_bootstrap_kubelet_conf
+  become: true
+
+- name: worker を join
+  when: not k8s_bootstrap_kubelet_conf.stat.exists
+  block:
+    - name: join コマンドを生成(先頭 CP で実行、保存しない)
+      ansible.builtin.command: kubeadm token create --ttl 30m --print-join-command
+      delegate_to: "{{ groups['k8s_control_plane'][0] }}"
+      register: k8s_bootstrap_join_cmd
+      changed_when: false
+      no_log: true
+      become: true
+
+    - name: kubeadm join を実行
+      ansible.builtin.command:
+        cmd: "{{ k8s_bootstrap_join_cmd.stdout }}"
+        creates: /etc/kubernetes/kubelet.conf
+      no_log: true
+      become: true

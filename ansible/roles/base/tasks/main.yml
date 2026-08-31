@@ -1,0 +1,74 @@
+- name: 管理ユーザーを作成
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    groups: sudo
+    append: true
+    shell: /bin/bash
+    password_lock: true
+  become: true
+
+- name: sudo NOPASSWD を設定
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/90-{{ admin_user }}
+    content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    mode: "0440"
+    validate: visudo -cf %s
+  become: true
+
+- name: SSH 公開鍵を配布
+  ansible.posix.authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ item }}"
+  loop: "{{ admin_ssh_pubkeys }}"
+  become: true
+
+- name: sshd を強化
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/90-hardening.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+      X11Forwarding no
+    mode: "0644"
+    validate: sshd -T -f /etc/ssh/sshd_config -C user=root -o Include=%s
+  become: true
+  notify: Restart sshd
+
+- name: IP forwarding を有効化(gateway は NAT、ノードは Pod 転送で必要)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_file: /etc/sysctl.d/90-ip-forward.conf
+    reload: true
+  become: true
+
+- name: タイムゾーンを設定
+  community.general.timezone:
+    name: "{{ timezone }}"
+  become: true
+
+- name: 基本パッケージを導入
+  ansible.builtin.apt:
+    name:
+      - chrony
+      - unattended-upgrades
+      - nftables
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: chrony を有効化
+  ansible.builtin.systemd_service:
+    name: chrony
+    enabled: true
+    state: started
+  become: true
+
+- name: unattended-upgrades の blacklist を設定(k8s / containerd を除外)
+  ansible.builtin.template:
+    src: 52unattended-upgrades-local.j2
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    mode: "0644"
+  become: true

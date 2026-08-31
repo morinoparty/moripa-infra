@@ -1,0 +1,5 @@
+profile: moderate
+
+skip_list:
+  # タスク名は日本語+ツール名(sshd 等の小文字始まり)で書くため除外
+  - name[casing]

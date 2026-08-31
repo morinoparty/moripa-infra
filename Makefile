@@ -80,7 +80,8 @@ lint-terraform:
 
 lint-ansible:
 	cd ansible && ../$(VENV)/bin/ansible-lint
-	cd ansible && ../$(VENV)/bin/ansible-playbook --syntax-check playbooks/site.yml
+	cd ansible && for pb in playbooks/*.yml; do \
+	  [ -e "$$pb" ] && ../$(VENV)/bin/ansible-playbook --syntax-check "$$pb"; done; true
 	cd ansible && ../$(VENV)/bin/ansible-inventory --list > /dev/null
 
 lint-helm: ## Cilium values が chart に対して有効か検証

@@ -1,0 +1,2 @@
+wg_role: hub
+ansible_user: "{{ admin_user }}"

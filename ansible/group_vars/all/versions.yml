@@ -1,0 +1,15 @@
+# バージョンピンの一元管理(2026-08 時点の選定。根拠は計画/README 参照)
+
+# pkgs.k8s.io のマイナーリポジトリ。パッチはリポジトリ内最新を導入して apt hold
+k8s_version: "1.35"
+# kubeadm ClusterConfiguration 用(実装時に `apt-cache madison kubeadm` で確定)
+k8s_full_version: "v1.35.3"
+
+cilium_version: "1.19.6"
+kube_vip_version: "v1.0.4"
+
+# Cilium がサポートする Gateway API バージョンに合わせること
+# (Cilium ドキュメントの Gateway API サポート表を確認)
+gateway_api_version: "v1.3.0"
+
+helm_version: "v3.19.0"

@@ -1,0 +1,16 @@
+admin_user: moripa
+# 管理者の SSH 公開鍵(terraform.tfvars の admin_ssh_keys と同じもの)
+admin_ssh_pubkeys: []
+#  - "ssh-ed25519 AAAA... yahiro@morino.party"
+
+timezone: Asia/Tokyo
+
+# unattended-upgrades の対象から外すパッケージ
+# (k8s 系と containerd の不意の更新・再起動を防ぐ。更新は計画的に手動で)
+unattended_upgrades_blacklist:
+  - kubeadm
+  - kubelet
+  - kubectl
+  - kubernetes-cni
+  - cri-tools
+  - containerd

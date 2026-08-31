@@ -1,0 +1,8 @@
+// {{ ansible_managed }}
+// k8s 系と containerd は unattended-upgrades の対象外(手動で計画更新する)
+Unattended-Upgrade::Package-Blacklist {
+{% for pkg in unattended_upgrades_blacklist %}
+    "{{ pkg }}";
+{% endfor %}
+};
+Unattended-Upgrade::Automatic-Reboot "false";

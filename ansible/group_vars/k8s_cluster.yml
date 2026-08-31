@@ -1,0 +1,5 @@
+wg_role: spoke
+ansible_user: "{{ admin_user }}"
+
+# 管理マシンが LAN 外にある場合は wg 経由 or ProxyJump を使う:
+# ansible_ssh_common_args: "-o ProxyJump={{ admin_user }}@{{ gateway_public_ip }}"

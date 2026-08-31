@@ -38,7 +38,10 @@ jobs:
         run: pnpm run build
 
       # デプロイトークンは BSM morinoparty プロジェクトの shared/CLOUDFLARE_API_TOKEN
-      # から取得(moripath の deploy-storybook.yml と同じパターン)
+      # から取得(moripath の deploy-storybook.yml と同じパターン)。
+      # 注意: org は Free プランのため org シークレットは private リポジトリでは
+      # 使えない。NIKOMARU_BITWARDEN_SECRET_MANAGER_ACCESS_TOKEN と CF_ACCOUNT_ID
+      # は**このリポジトリのシークレット**として登録すること
       - name: Get deploy token from Bitwarden Secrets Manager
         uses: bitwarden/sm-action@v3.0.1
         with:

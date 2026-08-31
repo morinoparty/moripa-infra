@@ -13,8 +13,9 @@ description: ゼロからインフラを立ち上げるまでの全体フロー�
 flowchart TD
     A["鍵の生成"] --> B["Terraform: Linode プロビジョニング"]
     B --> C["Ansible: gateway 構成"]
-    C --> D["現地作業者: 設置・OS導入・固定IP・ブートストラップ"]
-    D --> E["Ansible: cluster 構成(wg spoke → k8s → Cilium)"]
+    C --> D["現地作業者: 設置・OS導入・ブートストラップ(IP設定なし)"]
+    D --> D2["DHCP 予約で LAN IP を固定(リモート)"]
+    D2 --> E["Ansible: cluster 構成(wg spoke → k8s → Cilium)"]
     E --> F["ArgoCD bootstrap(site1)"]
     E --> G["ArgoCD bootstrap(site2)"]
 ```
@@ -39,10 +40,10 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph onsite["現地作業者の担当"]
-        H["サーバー設置・配線"] --> I["OS導入・固定IP設定"] --> J["ブートストラップコマンド実行(1行)"]
+        H["サーバー設置・配線"] --> I["OS導入(全部デフォルト)"] --> J["ブートストラップコマンド実行(1行)"]
     end
     subgraph remote["管理者の担当(すべてリモート)"]
-        K["wg 本設定・疎通確認"] --> L["kubeadm init/join"] --> M["Cilium 投入"] --> N["ArgoCD bootstrap"]
+        K["DHCP 予約・wg 本設定"] --> L["kubeadm init/join"] --> M["Cilium 投入"] --> N["ArgoCD bootstrap"]
     end
     onsite --> remote
 ```

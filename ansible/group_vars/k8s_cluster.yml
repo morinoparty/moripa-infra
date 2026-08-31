@@ -5,5 +5,7 @@ ansible_user: "{{ admin_user }}"
 # (NIC 名確定後は "enp1s0" 等で固定推奨)
 kube_vip_interface: "{{ lan_interface }}"
 
-# 管理マシンが LAN 外にある場合は wg 経由 or ProxyJump を使う:
-# ansible_ssh_common_args: "-o ProxyJump={{ admin_user }}@{{ gateway_public_ip }}"
+# 管理経路は WireGuard(ansible_host = wg アドレス)。
+# ノードの LAN IP は DHCP + ルーター側 MAC 予約で固定し、Ansible からは
+# ansible_default_ipv4.address(= LAN の実IP)としてファクトで参照する。
+# 前提: 各ノードで node-bootstrap 済み(wg が張られていないと到達不能)

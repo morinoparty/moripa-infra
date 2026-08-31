@@ -102,7 +102,7 @@
   ansible.builtin.copy:
     dest: /etc/default/kubelet
     content: |
-      KUBELET_EXTRA_ARGS=--node-ip={{ ansible_host }}
+      KUBELET_EXTRA_ARGS=--node-ip={{ ansible_default_ipv4.address }}
     mode: "0644"
   become: true
   notify: Restart kubelet

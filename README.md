@@ -104,8 +104,9 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 |---|---|---|
 | ノードの OS | Ubuntu 26.04.1 LTS server | 確定 |
 | 拠点構成 | 2拠点 × 3台、拠点ごとに独立クラスタ | 各拠点 3台全部 control-plane(stacked etcd・schedulable)、API VIP は kube-vip |
-| site1 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.13、kube-vip VIP .10 |
-| site2 LAN CIDR | 192.168.20.0/24(提案値) | ノード .11–.13、kube-vip VIP .10 |
+| site1 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.13 は **DHCP + ルーター側 MAC 予約で固定**。kube-vip VIP .10 は DHCP プール外に |
+| site2 LAN CIDR | 192.168.20.0/24(提案値) | 同上 |
+| ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host は wg アドレス。LAN IP は k8s 用に実行時ファクトで取得 |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.13、site2 は .21–.23。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
 | 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |

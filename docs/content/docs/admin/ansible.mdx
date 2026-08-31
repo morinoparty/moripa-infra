@@ -22,6 +22,34 @@ Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrade
 - `wg show` で peer が7台分(6ノード + 管理者マシン)登録されている
 - `nft list ruleset` で masquerade / DNAT / MSS clamp のルールが入っている
 
+## make cluster の前に: DHCP 予約で LAN IP を固定する
+
+ノードは DHCP クライアントであり、LAN IP はルーター側の **MAC アドレス予約
+(固定リース)** で固定する。kubeadm は init/join 時点の LAN IP を
+etcd のピア URL や advertiseAddress に焼き込むため、**予約が済む前に
+`make cluster` を実行してはいけない**(後から IP が変わるとクラスタ再構築に
+なる)。推奨する割り当て:
+
+| ノード | 予約する LAN IP |
+|---|---|
+| site1-node1〜3 | 192.168.10.11 / .12 / .13 |
+| site2-node1〜3 | 192.168.20.11 / .12 / .13 |
+
+この表は人間(ルーター設定)用のリファレンスで、Ansible はこの値に依存しない
+(接続は wg アドレス、k8s 用 IP は実行時のファクトで拾う)。ただし
+**kube-vip の VIP(.10)は必ず DHCP プールの範囲外にする**こと。
+
+手順(各ノードの node-bootstrap 完了後、リモートで):
+
+```sh
+ssh moripa@10.100.0.11 ip -br link show   # MAC アドレスを確認
+# → ルーターの管理画面で MAC に対して上表の IP を予約
+ssh moripa@10.100.0.11 sudo netplan apply  # リースを取り直す(または再起動)
+ssh moripa@10.100.0.11 ip -4 -br addr show # ✅ 予約した IP になっていることを確認
+```
+
+✅ **6台すべてが予約どおりの IP を保持していることを確認してから**次へ進む。
+
 ## make cluster: プレイ順序
 
 ```mermaid

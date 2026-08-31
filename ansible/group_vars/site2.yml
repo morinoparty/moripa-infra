@@ -1,5 +1,7 @@
 site_name: site2
+# ノードの LAN IP は DHCP + ルーター側 MAC 予約で固定(推奨: .11-.13)。inventory には書かない
 lan_cidr: 192.168.20.0/24
+# VIP は lan_cidr 内かつ DHCP プールの範囲外にすること(check-consistency が CIDR 内かを検査)
 kube_vip_address: 192.168.20.10
 # この拠点のクラスタの control-plane グループ名(k8s_bootstrap が参照)
 k8s_cp_group: site2_control_plane

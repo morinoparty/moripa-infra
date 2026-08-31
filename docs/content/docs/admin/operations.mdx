@@ -50,6 +50,19 @@ kube-vip の VIP が全損すると、Cilium agent の API サーバー接続も
 スケジューリングや設定変更ができなくなるだけ)。復旧は各 control-plane の
 kubelet / kube-vip の状態確認から着手する。
 
+## ノードの wg が死んだとき
+
+管理経路は wg のみ(`ansible_host` = wg アドレス)なので、ノードの wg が
+落ちると Ansible からも SSH からも到達できなくなる。復旧手段:
+
+1. 同一 LAN 内の別ノード経由で入る(`ssh moripa@10.100.0.12` → LAN IP へ)
+2. それも不可なら現地でコンソールログインし、node-bootstrap スクリプトを
+   再実行(`make node-bootstrap HOST=...` で再生成して渡す)
+
+また、ノードは DHCP のため**ルーターの MAC 予約を消さないこと**。予約が
+外れて LAN IP が変わると kubeadm/etcd が壊れる(クラスタ再構築級)。
+ルーター交換時は先に予約を移すこと。
+
 ## wg syncconf と restart の使い分け
 
 | 変更内容 | 反映方法 | 理由 |

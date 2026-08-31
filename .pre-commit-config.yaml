@@ -1,0 +1,15 @@
+# 導入: uv tool install pre-commit && pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: check-secrets
+        name: 平文の秘密を検出
+        entry: scripts/check_secrets.sh
+        language: script
+        pass_filenames: false
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: terraform fmt -check -recursive terraform/
+        language: system
+        pass_filenames: false
+        files: \.tf$

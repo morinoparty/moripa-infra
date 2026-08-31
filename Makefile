@@ -98,7 +98,8 @@ lint-kustomize: ## ksops(秘密)を含む overlay は対象外(CI と同方針)
 	fi
 
 check-consistency: ## group_vars ↔ cilium values ↔ terraform の整合を検査
-	@if [ -f scripts/check_consistency.py ]; then python3 scripts/check_consistency.py; fi
+	$(VENV)/bin/python scripts/check_consistency.py
+	scripts/check_secrets.sh
 
 .PHONY: help
 help:

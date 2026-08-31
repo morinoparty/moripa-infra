@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt / validate
+        run: |
+          terraform fmt -check -recursive terraform/
+          terraform -chdir=terraform/envs/prod init -backend=false -input=false
+          terraform -chdir=terraform/envs/prod validate
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Python ツールを準備
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python ansible-core ansible-lint yamllint pyyaml
+          .venv/bin/ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: yamllint
+        run: .venv/bin/yamllint .
+
+      - name: ansible-lint / syntax-check / inventory
+        working-directory: ansible
+        run: |
+          ../.venv/bin/ansible-lint
+          for pb in playbooks/*.yml; do ../.venv/bin/ansible-playbook --syntax-check "$pb"; done
+          ../.venv/bin/ansible-inventory --list > /dev/null
+
+      - name: cilium values を helm template で検証
+        run: |
+          ver=$(grep -oP 'cilium_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
+          helm template cilium cilium --repo https://helm.cilium.io \
+            --version "$ver" -n kube-system \
+            -f kubernetes/infrastructure/cilium/values.yaml > /dev/null
+
+      - name: kustomize build(secrets/ksops を含む overlay は対象外)
+        run: |
+          for d in kubernetes/bootstrap/applications \
+                   kubernetes/infrastructure/gateway-api-crds \
+                   kubernetes/infrastructure/cert-manager \
+                   kubernetes/infrastructure/ingress \
+                   kubernetes/infrastructure/monitoring \
+                   kubernetes/apps \
+                   kubernetes/apps/minecraft; do
+            echo "== $d"
+            kubectl kustomize "$d" > /dev/null
+          done
+
+      - name: check-consistency
+        run: .venv/bin/python scripts/check_consistency.py
+
+      - name: 平文の秘密を検出
+        run: scripts/check_secrets.sh

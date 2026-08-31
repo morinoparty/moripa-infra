@@ -30,34 +30,41 @@
 
 ```
 moripa-infra/
+├── Makefile                    # 主要操作の入口(make help)
+├── .sops.yaml                  # sops + age の暗号化ルール(age 鍵 3種)
 ├── terraform/                  # Linode のプロビジョニング
 │   ├── modules/
 │   │   └── linode-gateway/     # Nanode + Firewall + cloud-init
 │   └── envs/
-│       └── prod/               # 実環境の tfvars / backend 設定
+│       └── prod/               # 実環境の tfvars(state はローカル + gitignore)
 ├── ansible/
-│   ├── inventory/
-│   │   └── hosts.yml           # gateway / k8s_control_plane / k8s_workers
-│   ├── group_vars/             # WireGuard 鍵(sops暗号化), CIDR 定義など
+│   ├── inventory/hosts.yml     # gateway / k8s_control_plane / k8s_workers
+│   ├── group_vars/
+│   │   └── all/network.yml     # ★ 全 CIDR / IP / ポートの唯一の正
+│   ├── host_vars/<host>/       # wg 公開鍵(平文) + 秘密鍵(sops 暗号化)
 │   ├── roles/
-│   │   ├── base/               # 共通設定(ユーザー, sshd, sysctl, unattended-upgrades)
-│   │   ├── wireguard/          # wg 設定配布(hub / spoke 両対応)
-│   │   ├── k8s_prereq/         # containerd, kubeadm/kubelet, カーネルモジュール
-│   │   └── k8s_bootstrap/      # kubeadm init/join (kube-proxy なし), Cilium Helm 投入
-│   └── playbooks/
-│       ├── site.yml
-│       ├── gateway.yml         # Linode 側の設定
-│       └── cluster.yml         # 6台のセットアップ
+│   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades
+│   │   ├── wireguard/          # hub/spoke 両対応 + nftables (DNAT / MSS clamp)
+│   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
+│   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
+│   └── playbooks/              # site.yml = gateway.yml + cluster.yml
 ├── kubernetes/                 # ArgoCD が watch する領域
-│   ├── bootstrap/              # ArgoCD 本体 + app-of-apps のルート Application
-│   ├── infrastructure/         # クラスタ基盤 (ArgoCD 管理)
-│   │   ├── cilium/             # ブートストラップ後に ArgoCD が引き取る
+│   ├── bootstrap/
+│   │   ├── argocd/             # 公式 manifest + ksops パッチ (kustomize)
+│   │   ├── secrets/            # out-of-band 投入する 2 Secret(sops 暗号化)
+│   │   ├── applications/       # app-of-apps(sync wave で順序制御)
+│   │   └── root-app.yaml
+│   ├── infrastructure/
+│   │   ├── gateway-api-crds/   # Cilium より先に同期(wave -3)
+│   │   ├── cilium/values.yaml  # ★ Ansible と ArgoCD が共有する唯一の Cilium 設定
 │   │   ├── cert-manager/
-│   │   ├── ingress/
+│   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80/:443)
 │   │   └── monitoring/
-│   └── apps/                   # 各種アプリケーション
-└── docs/
-    └── wireguard.md            # WireGuard 設計の詳細
+│   └── apps/
+│       └── minecraft/          # eTP Local + DNAT 先ノードにピン
+├── scripts/                    # check_consistency.py / check_secrets.sh
+├── docs/                       # wireguard.md / runbook.md / multi-site.md
+└── .github/workflows/ci.yml    # make lint 相当の CI
 ```
 
 ## ブートストラップ順序

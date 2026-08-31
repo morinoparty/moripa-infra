@@ -87,7 +87,7 @@ lint-ansible:
 lint-helm: ## Cilium values が chart に対して有効か検証
 	@if [ -f kubernetes/infrastructure/cilium/values.yaml ]; then \
 	  ver=$$(grep -oP 'cilium_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
-	  helm template cilium cilium/cilium --repo https://helm.cilium.io \
+	  helm template cilium cilium --repo https://helm.cilium.io \
 	    --version $$ver -n kube-system \
 	    -f kubernetes/infrastructure/cilium/values.yaml > /dev/null && echo "cilium values OK"; \
 	fi

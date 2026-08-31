@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - namespace.yaml
+  # 公式 install manifest(バージョンは tag でピン。更新時はここを変更)
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.8/manifests/install.yaml
+patches:
+  # repo-server に ksops(sops+age 復号)を組み込む
+  - path: repo-server-ksops-patch.yaml
+  # kustomize plugin (ksops) を有効化
+  - path: argocd-cm-patch.yaml

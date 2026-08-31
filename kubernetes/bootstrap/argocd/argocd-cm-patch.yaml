@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  # ksops (kustomize exec plugin) を許可
+  kustomize.buildOptions: --enable-alpha-plugins --enable-exec

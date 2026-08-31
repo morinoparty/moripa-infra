@@ -1,18 +1,18 @@
-# バージョンピンの一元管理(2026-08 時点の選定。根拠は計画/README 参照)
+# バージョンピンの一元管理(2026-08-31 に各リリースページで確認済み)
 
 # pkgs.k8s.io のマイナーリポジトリ。パッチはリポジトリ内最新を導入して apt hold
 k8s_version: "1.35"
-# kubeadm ClusterConfiguration 用(実装時に `apt-cache madison kubeadm` で確定)
-k8s_full_version: "v1.35.3"
+# kubeadm ClusterConfiguration 用(pkgs.k8s.io v1.35 の最新パッチ)
+k8s_full_version: "v1.35.8"
 
-cilium_version: "1.19.6"
-kube_vip_version: "v1.0.4"
+# 1.19 系の最新パッチ(1.20 はリリース直後のため見送り)
+cilium_version: "1.19.7"
+kube_vip_version: "v1.2.3"
 
-# Cilium がサポートする Gateway API バージョンに合わせること
-# (Cilium ドキュメントの Gateway API サポート表を確認)
-gateway_api_version: "v1.3.0"
+# Cilium 1.19 がサポートする Gateway API バージョン(docs.cilium.io v1.19 で確認)
+gateway_api_version: "v1.4.1"
 
-helm_version: "v3.19.0"
+helm_version: "v3.21.4"
 
 # kubeadm が期待する pause イメージ(`kubeadm config images list` で要確認)
 pause_image: registry.k8s.io/pause:3.10

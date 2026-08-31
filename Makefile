@@ -56,6 +56,14 @@ endif
 	echo "wg_public_key: $$pub"; \
 	echo "↑ 公開鍵を ansible/host_vars/$(HOST)/main.yml に追記すること"
 
+.PHONY: node-bootstrap
+node-bootstrap: ## 使い方: make node-bootstrap HOST=site1-node1 (現地作業者に渡す1回きりのスクリプトを生成)
+ifndef HOST
+	$(error HOST を指定すること: make node-bootstrap HOST=site1-node1)
+endif
+	$(VENV)/bin/python scripts/gen_node_bootstrap.py $(HOST) > bootstrap-$(HOST).sh
+	@echo "生成: bootstrap-$(HOST).sh(wg 秘密鍵を含む。安全な経路で渡し、実行後は削除させること)"
+
 # ---- ArgoCD bootstrap(一度きりの操作)-------------------------------------
 
 .PHONY: bootstrap-argocd

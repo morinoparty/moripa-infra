@@ -112,10 +112,19 @@ ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C argocd@moripa
 
 ### ブートストラップコマンドとして用意するもの
 
-現地作業者が実行する1行のコマンドは、管理者が事前に用意する自作スクリプトを
-指す。中身はそのノード用の `wg0.conf`(前節で生成した WireGuard 秘密鍵を
-含む)を書き込み、WireGuard パッケージを導入して `wg-quick up wg0` で
-起動するというもの。
+現地作業者が実行するスクリプトはリポジトリのジェネレータで生成できる:
+
+```sh
+make node-bootstrap HOST=site1-node1
+# → bootstrap-site1-node1.sh が生成される(gitignore 対象)
+```
+
+生成物(`scripts/gen_node_bootstrap.py` が inventory / group_vars / sops から
+組み立てる)は、そのノード用の `wg0.conf`(前節で生成した WireGuard 秘密鍵を
+含む)を書き込み、WireGuard パッケージを導入して `wg-quick@wg0` を有効化し、
+ハブへの疎通を確認して「OK: Connected」を表示する。作業者には
+「`sudo bash bootstrap-site1-node1.sh` を実行し、終わったらファイルを削除」
+とだけ伝えればよい。
 
 <Callout title="秘密鍵の取り扱いに注意">
   このスクリプトにはそのノードの WireGuard 秘密鍵が平文で埋め込まれる。

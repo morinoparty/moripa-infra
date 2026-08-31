@@ -1,5 +1,6 @@
 # {{ ansible_managed }}
 # kube-vip static pod (ARP mode, control-plane VIP)
+# env 名は kube-vip v1.2.3 の pkg/kubevip/config_envvar.go と突合済み
 # kube_vip_kubeconfig はタスク側から渡される
 # (init 前のみ super-admin.conf、それ以外は admin.conf)
 apiVersion: v1

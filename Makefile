@@ -92,10 +92,20 @@ lint-helm: ## Cilium values が chart に対して有効か検証
 	    -f kubernetes/infrastructure/cilium/values.yaml > /dev/null && echo "cilium values OK"; \
 	fi
 
-lint-kustomize: ## ksops(秘密)を含む overlay は対象外(CI と同方針)
-	@if command -v kustomize > /dev/null && [ -d kubernetes/bootstrap/applications ]; then \
-	  kustomize build kubernetes/bootstrap/applications > /dev/null && echo "applications OK"; \
-	fi
+KUSTOMIZE_DIRS := \
+  kubernetes/bootstrap/argocd \
+  kubernetes/bootstrap/applications \
+  kubernetes/infrastructure/gateway-api-crds \
+  kubernetes/infrastructure/cert-manager \
+  kubernetes/infrastructure/ingress \
+  kubernetes/infrastructure/monitoring \
+  kubernetes/apps \
+  kubernetes/apps/minecraft
+
+lint-kustomize: ## ksops generator(秘密)を含む overlay は対象外(CI と同方針)
+	@for d in $(KUSTOMIZE_DIRS); do \
+	  echo "== $$d"; kubectl kustomize "$$d" > /dev/null || exit 1; done
+	@echo "kustomize OK"
 
 check-consistency: ## group_vars ↔ cilium values ↔ terraform の整合を検査
 	$(VENV)/bin/python scripts/check_consistency.py

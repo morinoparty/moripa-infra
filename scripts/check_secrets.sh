@@ -10,6 +10,8 @@ patterns=(
   'AGE-SECRET-KEY-1[0-9A-Z]'
   '-----BEGIN (OPENSSH|RSA|EC) PRIVATE KEY-----'
   '^PrivateKey *= *[A-Za-z0-9+/]{43}='
+  # make wg-keygen が sops 暗号化前に書く YAML 形式(暗号化後は ENC[...] になる)
+  'wg_private_key: *[A-Za-z0-9+/]{43}='
 )
 
 fail=0

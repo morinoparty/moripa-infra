@@ -48,7 +48,8 @@ jobs:
 
       - name: kustomize build(secrets/ksops を含む overlay は対象外)
         run: |
-          for d in kubernetes/bootstrap/applications \
+          for d in kubernetes/bootstrap/argocd \
+                   kubernetes/bootstrap/applications \
                    kubernetes/infrastructure/gateway-api-crds \
                    kubernetes/infrastructure/cert-manager \
                    kubernetes/infrastructure/ingress \

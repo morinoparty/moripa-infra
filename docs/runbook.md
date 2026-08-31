@@ -17,6 +17,22 @@ export SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey
 for h in linode-gw node1 node2 node3 node4 node5 node6; do make wg-keygen HOST=$h; done
 # → 表示された公開鍵を ansible/host_vars/<host>/main.yml に記載(コミット対象)
 
+# 管理者マシンの WireGuard peer 登録(重要: これを忘れると §6 で SSH を閉じた後
+# ゲートウェイに入れなくなる。復旧は Linode の LISH コンソールのみ)
+wg genkey | tee ~/keys/wg-admin.key | wg pubkey   # 公開鍵が表示される
+# → 公開鍵を ansible/group_vars/all/network.yml の wg_extra_peers に登録
+#    (allowed_ips: 10.100.0.100/32)。管理者マシン側の設定例:
+#
+#    # /etc/wireguard/wg0.conf(管理者マシン)
+#    [Interface]
+#    Address    = 10.100.0.100/32
+#    PrivateKey = <~/keys/wg-admin.key の中身>
+#    [Peer]
+#    PublicKey           = <linode-gw の公開鍵>
+#    Endpoint            = <linode public ip>:51820
+#    AllowedIPs          = 10.100.0.0/24   # 管理経路のみ(フルトンネルにしない)
+#    PersistentKeepalive = 25
+
 # GitHub read-only deploy key(ArgoCD 用)
 ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C argocd@moripa
 # 公開鍵を GitHub repo Settings → Deploy keys に登録(read-only)
@@ -95,7 +111,10 @@ make bootstrap-argocd
 ## 6. 定常運用メモ
 
 - SSH は wg 経由のみ: `ssh moripa@10.100.0.1`(gw)、`ssh moripa@10.100.0.11`(node1)。
-  Terraform の `bootstrap_ssh_cidrs` を空にして re-apply し、公開 SSH を閉じる
+  **公開 SSH を閉じる前の必須確認**: §0 で管理者マシンを `wg_extra_peers` に登録し
+  `make gateway` を再実行済みで、管理者マシンの wg0 から `ssh moripa@10.100.0.1`
+  が通ること。確認後に Terraform の `bootstrap_ssh_cidrs` を空にして re-apply する
+  (閉じた後に wg が壊れた場合の復旧は Linode の LISH コンソール)
 - DNAT 先ノード(node1)障害時: `network.yml` の `dnat_rules[].target` を
   別ノードに変え `make gateway`。Minecraft は nodeSelector のピン先も変更
 - VIP 全損時は Cilium agent の API 接続も落ちる(既存データプレーンは動き続ける)。

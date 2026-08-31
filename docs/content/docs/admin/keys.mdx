@@ -72,20 +72,17 @@ AllowedIPs          = 10.100.0.0/24
 PersistentKeepalive = 25
 ```
 
-## GitHub deploy key(ArgoCD 用、read-only)
+## GitHub deploy key は不要
 
-ArgoCD の repo-server がこのリポジトリを読むための鍵。**両拠点で同じ鍵を
-共有**し、GitHub 側への登録は1回でよい。
+リポジトリは public のため、ArgoCD は認証なしの https
+(`https://github.com/morinoparty/moripa-infra.git`)で repo を読む。
+deploy key の生成・登録は不要。
 
-```sh
-ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C argocd@moripa
-```
-
-- 公開鍵: GitHub リポジトリの Settings → Deploy keys に read-only で登録(1回)
-- 秘密鍵: `kubernetes/sites/site1/bootstrap/secrets/repo-moripa-infra.sops.yaml`
-  と site2 側の同名ファイルの `sshPrivateKey` に貼り、それぞれ `sops -e -i`
-  で暗号化
-- 作業後、`/tmp` に残した平文鍵は `shred` で削除する
+<Callout title="リポジトリを private に戻す場合">
+  read-only deploy key の作成と `argocd.argoproj.io/secret-type: repository`
+  Secret の投入、全 Application の repoURL の SSH 形式への変更が必要になる
+  (`kubernetes/sites/site1/bootstrap/secrets/README.md` 参照)。
+</Callout>
 
 ## まとめ表
 
@@ -96,7 +93,6 @@ ssh-keygen -t ed25519 -f /tmp/deploy_key -N "" -C argocd@moripa
 | age cluster | `age-keygen` | 両拠点の repo-server Secret | 共有 |
 | wg: linode-gw 他6ホスト | `make wg-keygen HOST=...` | `ansible/host_vars/<host>/` | ホストごとに別鍵 |
 | wg: 管理者マシン | `wg genkey` | 管理者マシン + `network.yml` の `wg_extra_peers` | (個人鍵) |
-| GitHub deploy key | `ssh-keygen` | 両拠点の `repo-moripa-infra.sops.yaml` | 共有(1鍵) |
 
 ## 現地作業者に渡すもの
 

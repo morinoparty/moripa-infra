@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:morinoparty/moripa-infra.git
+    repoURL: https://github.com/morinoparty/moripa-infra.git
     targetRevision: main
     path: kubernetes/sites/site2/infrastructure/monitoring
   destination:

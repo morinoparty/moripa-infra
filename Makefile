@@ -73,7 +73,6 @@ ifndef SITE
 endif
 	kubectl apply -k kubernetes/sites/$(SITE)/bootstrap/argocd
 	sops -d kubernetes/sites/$(SITE)/bootstrap/secrets/sops-age.sops.yaml | kubectl apply -f -
-	sops -d kubernetes/sites/$(SITE)/bootstrap/secrets/repo-moripa-infra.sops.yaml | kubectl apply -f -
 	kubectl apply -f kubernetes/sites/$(SITE)/bootstrap/root-app.yaml
 
 # ---- 検証 -------------------------------------------------------------------

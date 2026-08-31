@@ -21,7 +21,7 @@ spec:
         valueFiles:
           - $values/kubernetes/common/cilium/values.yaml
           - $values/kubernetes/sites/site1/infrastructure/cilium/values.yaml
-    - repoURL: git@github.com:morinoparty/moripa-infra.git
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
       targetRevision: main
       ref: values
   destination:

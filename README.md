@@ -110,7 +110,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.13、site2 は .21–.23。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
 | 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
-| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵と deploy key は両拠点共有 |
+| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## 注意: Nanode の転送量上限
 
@@ -131,5 +131,5 @@ split-tunnel にする場合の選択肢:
 - [x] `git init` してリモート(GitHub 等)に push — **ArgoCD が参照できるリポジトリであることが前提条件**
 - [x] 前提テーブルの値を確定(LAN CIDR のみ提案値。実測後 group_vars を更新)
 - [x] terraform / ansible / kubernetes の各実装
-- [ ] 実鍵の生成(age 鍵 3種、wg 鍵、GitHub deploy key)→ 管理者向けドキュメント(docs/content/docs/admin/)
+- [ ] 実鍵の生成(age 鍵 3種、wg 鍵)→ 管理者向けドキュメント(docs/content/docs/admin/)
 - [ ] 実機適用(管理者向けドキュメント(docs/content/docs/admin/) の手順に従う)

@@ -26,23 +26,23 @@ sequenceDiagram
     Note over K: ArgoCD 本体 + ksops パッチが入る
     M->>K: sops -d sops-age.sops.yaml | kubectl apply -f -
     Note over K: cluster age鍵 Secret(out-of-band)
-    M->>K: sops -d repo-moripa-infra.sops.yaml | kubectl apply -f -
-    Note over K: deploy key Secret(out-of-band)
     M->>K: kubectl apply -f root-app.yaml
     Note over K: root Application → app-of-apps が同期開始
 ```
 
-## out-of-band で投入する2つの Secret
+## out-of-band で投入する Secret(1つ)
 
-ArgoCD が Git リポジトリを読めるようになる**前**に必要な Secret のため、
-GitOps 経路には乗せられない。`make bootstrap-argocd` が `sops -d | kubectl
-apply` で直接投入する。これ以外の Secret はすべて ksops 経由(GitOps)で
-管理する方針。
+ArgoCD が Git 上の暗号化ファイルを復号できるようになる**前**に必要な Secret
+のため、GitOps 経路には乗せられない。`make bootstrap-argocd` が
+`sops -d | kubectl apply` で直接投入する。これ以外の Secret はすべて
+ksops 経由(GitOps)で管理する方針。
 
 | Secret | 中身 | 拠点間の共有 |
 |---|---|---|
 | `sops-age` | cluster 用 age 秘密鍵。repo-server がこれで Git 上の暗号化ファイルを復号する | 共有(1鍵を両拠点に投入) |
-| repo 用 deploy key(`repo-moripa-infra`) | GitHub read-only deploy key の秘密鍵。repo-server が clone に使う | 共有(1鍵を両拠点に投入) |
+
+repo アクセスは認証なしの https(public リポジトリ)なので、repo 用の
+Secret は不要。
 
 準備手順は `kubernetes/sites/site1/bootstrap/secrets/README.md`
 (site2 も同一手順)を参照。

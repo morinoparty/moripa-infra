@@ -27,7 +27,7 @@ description: CIDR・VIP・DNATルール・各コンポーネントのバージ�
 | Service CIDR | `10.96.0.0/12` | 同上 |
 | kube-api ポート | `6443` | |
 | 外部公開ポート | Minecraft `25565`、HTTP/HTTPS `80`/`443` | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
-| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使用。cluster 鍵と deploy key は両拠点共有 |
+| 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使用。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## DNAT ルール(`ansible/group_vars/all/network.yml` の `dnat_rules`)
 

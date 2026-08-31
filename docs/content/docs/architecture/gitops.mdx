@@ -91,6 +91,6 @@ out-of-band投入)を使って、Git上の `*.sops.yaml` を sync 時にその�
 復号する。これにより、Kubernetes Secret も他のマニフェストと同じ GitOps
 経路(kustomize)に載せられる。
 
-bootstrap の2つの Secret(`sops-age` / deploy key)だけは、ArgoCD 自身が
+bootstrap の Secret(`sops-age`)だけは、ArgoCD 自身が
 リポジトリを読めるようになる前に必要なため、この仕組みの外側で
 `make bootstrap-argocd` が直接投入する(`/docs/admin/argocd` 参照)。

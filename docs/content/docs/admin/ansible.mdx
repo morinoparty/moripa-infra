@@ -4,7 +4,7 @@ description: make gateway / make cluster の内容と、各フェーズでの検
 ---
 
 WireGuard とクラスタの構成は `make gateway`(Linode)と `make cluster`
-(6台のノード)の2段階に分かれる。実体は `ansible/playbooks/gateway.yml` /
+(4台のノード)の2段階に分かれる。実体は `ansible/playbooks/gateway.yml` /
 `cluster.yml`(`site.yml` はこの2つをまとめて実行する)。
 
 ## make gateway: ゲートウェイ構成
@@ -13,59 +13,70 @@ WireGuard とクラスタの構成は `make gateway`(Linode)と `make cluster`
 make gateway
 ```
 
-Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrades)と
-`wireguard` ロール(hub 構成 + nftables の masquerade / DNAT / MSS clamp)
-を適用する。
+Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrades)、
+`wireguard` ロール(hub 構成 + nftables の masquerade / 公開ポート / MSS clamp)、
+`reverse_proxy` ロール(Caddy。`proxy_routes` から Caddyfile を生成)、
+`tcp_proxy` ロール(HAProxy。`tcp_routes` から haproxy.cfg を生成)を適用する。
 
 ✅ 検証:
 
-- `wg show` で peer が7台分(6ノード + 管理者マシン)登録されている
-- `nft list ruleset` で masquerade / DNAT / MSS clamp のルールが入っている
+- `wg show` で peer が5台分(4ノード + 管理者マシン)登録されている
+- `nft list ruleset` で masquerade / MSS clamp / `iifname "wg0" oifname "wg0" accept`
+  と、input chain の `tcp dport { 80, 443 } accept`・`tcp dport 25565 accept` が入っている
+- `systemctl status caddy` が active。`proxy_routes` が空のうちは Caddy は
+  どのポートも listen しない(`curl http://<linode_ip>` は接続拒否になる)
+- `systemctl status haproxy` が active。ノード未構築のうちは backend が全 DOWN で正常
 
-## make cluster の前に: DHCP 予約で LAN IP を固定する
+## make cluster の前に: ルーター側の設定は不要
 
-ノードは DHCP クライアントであり、LAN IP はルーター側の **MAC アドレス予約
-(固定リース)** で固定する。kubeadm は init/join 時点の LAN IP を
-etcd のピア URL や advertiseAddress に焼き込むため、**予約が済む前に
-`make cluster` を実行してはいけない**(後から IP が変わるとクラスタ再構築に
-なる)。推奨する割り当て:
+ノードの LAN は DHCP のままでよく、ルーター側の設定(固定リース等)は
+不要。`make cluster` の中で `cluster_lan` ロールが、ルーターと無関係な
+第 2 サブネット(`cluster_lan_cidr`)の固定アドレスを netplan で LAN NIC に
+追加し、kubeadm / kubelet / kube-vip / Cilium はそのアドレスだけを使う
+(設計は `/docs/architecture/wireguard`)。前提は次の 2 点だけ。
 
-| ノード | 予約する LAN IP |
-|---|---|
-| site1-node1〜3 | 192.168.10.11 / .12 / .13 |
-| site2-node1〜3 | 192.168.20.11 / .12 / .13 |
+- 各ノードの node-bootstrap が完了し、`ssh moripa@10.100.0.11` などが通る
+- 同一拠点の 2 台が同じルーター/スイッチの有線ポートにつながっている
+  (第 2 サブネットは同一 L2 でしか通らない)
 
-この表は人間(ルーター設定)用のリファレンスで、Ansible はこの値に依存しない
-(接続は wg アドレス、k8s 用 IP は実行時のファクトで拾う)。ただし
-**kube-vip の VIP(.10)は必ず DHCP プールの範囲外にする**こと。
+| ノード | 役割 | wg アドレス(管理) | lan_address(クラスタ) |
+|---|---|---|---|
+| site1-node1 / node2 | control-plane / worker | 10.100.0.11 / .12 | 10.200.1.11 / .12(VIP .10) |
+| site2-node1 / node2 | control-plane / worker | 10.100.0.21 / .22 | 10.200.2.11 / .12(VIP .10) |
 
-手順(各ノードの node-bootstrap 完了後、リモートで):
-
-```sh
-ssh moripa@10.100.0.11 ip -br link show   # MAC アドレスを確認
-# → ルーターの管理画面で MAC に対して上表の IP を予約
-ssh moripa@10.100.0.11 sudo netplan apply  # リースを取り直す(または再起動)
-ssh moripa@10.100.0.11 ip -4 -br addr show # ✅ 予約した IP になっていることを確認
-```
-
-✅ **6台すべてが予約どおりの IP を保持していることを確認してから**次へ進む。
+<Callout title="netplan apply は wg 越しに実行される" type="warn">
+  `cluster_lan` は管理経路(wg)越しに `netplan apply` を実行する。
+  systemd-networkd が wg-quick のポリシールールを消さないよう drop-in
+  (`ManageForeignRoutingPolicyRules=no`)を先に入れ、apply 直後にハブへの
+  ping で経路が生きていることを検査する。この手順は実機では未検証のため、
+  初回は 1 台ずつ実行し(`make cluster` には limit が無いので
+  `cd ansible && ../.venv/bin/ansible-playbook playbooks/cluster.yml --limit site1-node1`)、
+  切れたら現地でのコンソールログインか node-bootstrap の再実行で復旧する。
+  相手ノードとの疎通検証は、相手が play に含まれるときだけ行われる。
+</Callout>
 
 ## make cluster: プレイ順序
 
 ```mermaid
 flowchart TD
-    A["共通: base + wireguard(全ノード, spoke化)"] --> B["k8s_prereq: containerd / kubeadm 導入(全ノード)"]
-    B --> C["site1 control-plane 構築(serial:1)"]
-    C --> D["site2 control-plane 構築(serial:1)"]
-    D --> E["worker join(現状は空グループ)"]
+    A["共通: base + wireguard(全ノード, spoke化)"] --> A2["cluster_lan: 第 2 サブネットのアドレスを LAN NIC に追加(全ノード)"]
+    A2 --> B["k8s_prereq: containerd / kubeadm 導入(全ノード)"]
+    B --> C["site1 control-plane 構築(node1: kubeadm init)"]
+    C --> D["site2 control-plane 構築(node1: kubeadm init)"]
+    D --> E["worker join(各拠点の node2)"]
     E --> F["Cilium 投入 + 検証(site1・site2 それぞれの先頭ノード)"]
 ```
 
 `ansible/playbooks/cluster.yml` の実際のプレイ構成に対応する。site1 と
-site2 は独立クラスタなので、それぞれの control-plane 構築は互いに依存しない
-順次実行(`serial: 1` で先頭ノードの `kubeadm init` 完了後に残りが join する。
-etcd メンバー追加の同時実行を避けるため)。Cilium の投入は両拠点の先頭
-control-plane に対して最後にまとめて行う。
+site2 は独立クラスタなので、それぞれの control-plane 構築は互いに依存しない。
+各拠点の control-plane は node1 の 1台で、`kubeadm init` 後に node2 が
+worker として join する(`serial: 1` は将来 CP を追加したときに etcd メンバー
+追加の同時実行を避けるためのもの)。Cilium の投入は両拠点の control-plane に
+対して最後にまとめて行う。
+
+worker の join タスクは join トークンを隠すため `no_log` になっており、失敗時に
+エラーの詳細が出ない。失敗したら該当ノードで `journalctl -u kubelet` を見るか、
+`ansible-playbook -v` で再実行する。
 
 ```sh
 make cluster
@@ -77,27 +88,44 @@ make cluster
 
 - ✅ 各ノードで `curl ifconfig.me` が Linode の IP を返す(フルトンネル)
 - ✅ `ping 10.100.0.1` 成功、`wg show` の handshake が新しい
-- ✅ `ip route get <同一拠点の他ノードIP>` が LAN NIC を返す
-  (**クラスタ内通信は LAN 直通**であることの確認。詳細は
+- ✅ `ip -4 addr show` で LAN NIC に DHCP のアドレスと `lan_address`
+  (10.200.x.x)の両方が付いている
+- ✅ 同一拠点の他ノードの `lan_address` へ `ping` が通り、`ip route get` が
+  LAN NIC を返す(**クラスタ内通信は LAN 直通**。詳細は
   `/docs/architecture/wireguard`)
-- ✅ `ip rule` に priority 100 の除外ルール(LAN / Pod / Service CIDR)が3本
+- ✅ `ip rule` に priority 100 の除外ルール(cluster_lan / Pod / Service CIDR)が3本
 
 ### クラスタ Ready(拠点ごとに確認)
 
-- ✅ `kubectl get nodes` で各クラスタ3台が Ready(taint なし)
-- ✅ `cilium status --wait` が全緑。任意で `cilium connectivity test`
+- ✅ `kubectl get nodes` で各クラスタ2台が Ready(node1 は control-plane
+  ロールだが taint なし、node2 は worker)
+- ✅ 管理者マシンから wg 経由で `kubectl` が通る。kubeadm の `admin.conf` は
+  kube-vip の VIP(`10.200.1.10:6443`)を指すが VIP は wg から届かないため、
+  手元の kubeconfig は server を node1 の wg アドレス
+  (`https://10.100.0.11:6443`、certSANs 済み)に書き換えて使う。
+  control-plane は 1台なのでフェイルオーバーは存在しない(node1 停止 = API 停止)
+- ✅ `kubectl get nodes -o wide` の INTERNAL-IP が `lan_address`(10.200.x.x)
+- ✅ `cilium status --wait` が全緑。`cilium connectivity test` で node2 ↔ node1
+  の Pod 間通信(LAN 直通の VXLAN)が通る
 
-### VIP フェイルオーバーテスト
+### etcd バックアップ
 
-先頭ノードの kubelet を止めても、kube-vip の VIP(site1: `192.168.10.10` /
-site2: `192.168.20.10`)への ping と `kubectl` 操作が継続することを確認する。
-確認後は kubelet を戻す。
+control-plane が 1台のため、node1 の全損に備えて etcd スナップショットの
+定期取得が必須(未実装。README の次のステップ参照)。
 
-### DNAT 確認
+### 公開経路の確認
 
-- ✅ 外部から `nc -vz <linode_ip> 25565`(Minecraft デプロイ後)
-- ✅ `curl -v http://<linode_ip>`(ingress デプロイ後)
-- ✅ アプリログでクライアントの実IPが見える(SNAT されていないこと)
+- ✅ HAProxy: 外部から `nc -vz <linode_ip> 25565` が通る(Minecraft デプロイ後。
+  `allowed_sources` を設定済みなら Velocity のホストから)。
+  `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
+  で backend の両ノードが UP
+- ✅ Caddy: `proxy_routes` に最初のホストを登録して DNS を向けたあと、
+  `curl -v https://<host>` が対象拠点の Gateway に届く(HTTPRoute 未作成なら
+  Envoy の 404 が返るのが正常)。DNS 反映前は証明書が無いので HTTPS は
+  検証できない。`curl -v --resolve <host>:80:<linode_ip> http://<host>` で
+  Caddy の HTTPS リダイレクト(308)が返れば Caddy が受けている
+- ✅ Caddy 経由のリクエストで、アプリ側に `X-Forwarded-For` としてクライアントの
+  実IPが届く(Cilium の `gatewayAPI.xffNumTrustedHops: 1` の検証)
 - ✅ Pod 内から大きな HTTPS レスポンスを取得できる(MSS clamp / MTU の検証)
 
 <Callout title="拠点ごとの独立性">

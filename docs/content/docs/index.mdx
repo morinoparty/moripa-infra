@@ -6,14 +6,15 @@ description: もりのパーティ(Minecraftコミュニティ)サーバーイ�
 このサイトは、もりのパーティのサーバーインフラに関するドキュメントです。
 サーバーは**2つの拠点**(site1 / site2)に設置されていて、それぞれが独立した
 Kubernetes クラスタとして動いています。拠点の外との出入り口として、
-Linode 上の VPS が WireGuard のハブ(中継地点)になっています。
+Linode 上の VPS が WireGuard のハブ(中継地点)と、Web サービスの
+入口(リバースプロキシ)になっています。
 
 ```mermaid
 flowchart TB
     Admin["管理者(リモートから作業)"]
-    VPS["Linode VPS(WireGuardハブ)"]
-    Site1["拠点1: site1-node1〜3(Kubernetesクラスタ)"]
-    Site2["拠点2: site2-node1〜3(Kubernetesクラスタ)"]
+    VPS["Linode VPS(WireGuardハブ / リバースプロキシ)"]
+    Site1["拠点1: site1-node1〜2(Kubernetesクラスタ)"]
+    Site2["拠点2: site2-node1〜2(Kubernetesクラスタ)"]
 
     Admin -- "WireGuard" --> VPS
     VPS -- "WireGuard" --> Site1

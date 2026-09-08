@@ -1,11 +1,14 @@
 wg_role: spoke
 ansible_user: "{{ admin_user }}"
 
-# kube-vip が VIP を張る NIC。wg0 の自動検出事故を防ぐため必ず LAN NIC を指す
-# (NIC 名確定後は "enp1s0" 等で固定推奨)
-kube_vip_interface: "{{ lan_interface }}"
+# LAN NIC 名。空なら roles/cluster_lan/tasks/detect.yml が main テーブルの
+# default route から自動検出する(フルトンネル下では ansible_default_ipv4 が
+# wg0 を返すので使わない)。NIC 名が確定したら "enp1s0" 等で固定推奨
+lan_interface: ""
 
-# 管理経路は WireGuard(ansible_host = wg アドレス)。
-# ノードの LAN IP は DHCP + ルーター側 MAC 予約で固定し、Ansible からは
-# ansible_default_ipv4.address(= LAN の実IP)としてファクトで参照する。
+# kube-vip が VIP を張る NIC(= 検出した LAN NIC。wg0 は不可)
+kube_vip_interface: "{{ cluster_lan_interface }}"
+
+# 管理経路は WireGuard(ansible_host = wg アドレス)。クラスタ通信は
+# cluster_lan_cidr の lan_address(LAN 直通)。DHCP で貰う LAN IP は使わない。
 # 前提: 各ノードで node-bootstrap 済み(wg が張られていないと到達不能)

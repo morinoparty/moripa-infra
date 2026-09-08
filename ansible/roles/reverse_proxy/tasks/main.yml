@@ -1,0 +1,50 @@
+# Linode(ハブ)上の Caddy。HTTP/HTTPS を受けて TLS を終端し、proxy_routes の
+# ホスト名ごとに対象拠点のノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。
+# 設計: docs/content/docs/architecture/wireguard.mdx(公開経路の節)
+
+- name: proxy_routes の site が inventory のグループであることを確認
+  ansible.builtin.assert:
+    that:
+      - item.site in groups
+      - groups[item.site] | length > 0
+    fail_msg: "proxy_routes[{{ item.host }}].site={{ item.site }} が inventory のグループに無い"
+  loop: "{{ proxy_routes }}"
+  loop_control:
+    label: "{{ item.host }}"
+
+- name: Caddy の apt リポジトリを登録(deb822 + Signed-By)
+  ansible.builtin.deb822_repository:
+    name: caddy-stable
+    types: deb
+    uris: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
+    suites: any-version
+    components: main
+    signed_by: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+  become: true
+  register: reverse_proxy_repo
+
+- name: Caddy を導入
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+    update_cache: "{{ reverse_proxy_repo.changed }}"
+    cache_valid_time: 3600
+  become: true
+
+- name: Caddyfile を配布
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+    validate: caddy validate --adapter caddyfile --config %s
+  become: true
+  notify: Reload caddy
+
+- name: Caddy を有効化・起動
+  ansible.builtin.systemd_service:
+    name: caddy
+    enabled: true
+    state: started
+  become: true

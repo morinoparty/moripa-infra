@@ -1,34 +1,38 @@
 # moripa-infra
 
-自宅サーバー6台 + Linode Nanode(踏み台/出口ゲートウェイ) のインフラ管理モノレポ。
+自宅サーバー4台(2拠点 × 2台) + Linode Nanode(踏み台/出口ゲートウェイ/リバースプロキシ) のインフラ管理モノレポ。
 
 - **Terraform**: Linode リソース(Nanode, Firewall)のプロビジョニング
-- **Ansible**: 6台のサーバーの構成管理(WireGuard, k8s ブートストラップ)
+- **Ansible**: Linode + 4台のサーバーの構成管理(WireGuard, Caddy, k8s ブートストラップ)
 - **kubernetes/**: ArgoCD が監視する GitOps マニフェスト群
 
 ## 構成概要
 
-**2拠点構成**。各拠点が独立した k8s クラスタ(3台全部 control-plane・schedulable)
+**2拠点構成**。各拠点が独立した k8s クラスタ(node1 = control-plane、node2 = worker)
 と独立した ArgoCD を持つ。障害ドメインは完全に分離され、拠点間にクラスタの依存はない。
 
 ```
 [インターネット]
-      │
-[Linode Nanode]  ← WireGuard ハブ / 出口 (10.100.0.1)
+      │ 80/443 → Caddy(L7, TLS 終端) / 25565 → HAProxy(L4)
+[Linode Nanode]  ← WireGuard ハブ / 出口 / リバースプロキシ (10.100.0.1)
       │ wg0 (hub-and-spoke)
       │
-      ├─ site1 (LAN 192.168.10.0/24, VIP .10)     ├─ site2 (LAN 192.168.20.0/24, VIP .10)
-      │   ├── site1-node1 (10.100.0.11) ┐         │   ├── site2-node1 (10.100.0.21) ┐
-      │   ├── site1-node2 (10.100.0.12) │ k8s     │   ├── site2-node2 (10.100.0.22) │ k8s
-      │   └── site1-node3 (10.100.0.13) ┘ cluster │   └── site2-node3 (10.100.0.23) ┘ cluster
+      ├─ site1 (クラスタ用 10.200.1.0/24, VIP .10)   ├─ site2 (クラスタ用 10.200.2.0/24, VIP .10)
+      │   ├── site1-node1 (10.100.0.11) CP ┐ k8s  │   ├── site2-node1 (10.100.0.21) CP ┐ k8s
+      │   └── site1-node2 (10.100.0.12) wk ┘      │   └── site2-node2 (10.100.0.22) wk ┘
       │      (kubeadm + Cilium + ArgoCD)          │      (kubeadm + Cilium + ArgoCD)
 ```
 
 - 各ノードの**外向き通信は Linode 経由**(フルトンネル)。外部からは Linode の固定IPに見える
-- **クラスタ内通信(etcd / Pod / Service)は各拠点の LAN 内で直接通信**し、トンネルを通らない
+- **クラスタ内通信(etcd / API / Pod の VXLAN)は各拠点の LAN 内で直接通信**し、トンネルを通らない。
+  拠点の LAN は DHCP のまま(アパートのルーターは触れない)で、Ansible が**ルーターと無関係な第 2 サブネット
+  (`10.200.<site>.0/24`)を LAN NIC に重ね**、kubelet / kubeadm / kube-vip はそのアドレスだけを使う。
+  DHCP で貰う LAN IP はどこにも焼き込まない
   → 詳細は [docs/content/docs/architecture/wireguard.mdx](docs/content/docs/architecture/wireguard.mdx)
 - 拠点間はクラスタレベルで**接続しない**(→ [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx))
-- 外部公開は Linode 側の DNAT でトンネル越しに対象拠点のノードへ転送
+- HTTP/HTTPS の公開は Linode 上の **Caddy** がホスト名ごとに対象拠点のノードへ転送(TLS 終端・ノード障害時の自動切替)。
+  Minecraft など L4 のサービスは **HAProxy** が対象拠点の NodePort へ転送(前段の Velocity がプレイヤー IP を渡す)
+- 各拠点の control-plane は 1台(etcd 1メンバー)なので **HA ではない**。etcd バックアップが前提
 
 ## ディレクトリ構成
 
@@ -45,11 +49,14 @@ moripa-infra/
 │   ├── inventory/hosts.yml     # gateway / site1(_control_plane) / site2(_control_plane)
 │   ├── group_vars/
 │   │   ├── all/network.yml     # ★ 共通ネットワーク値の唯一の正
-│   │   └── site1.yml, site2.yml  # 拠点別(LAN CIDR / VIP / グループ名)
+│   │   └── site1.yml, site2.yml  # 拠点別(クラスタ用サブネット / VIP / グループ名)
 │   ├── host_vars/<host>/       # wg 公開鍵(平文) + 秘密鍵(sops 暗号化)
 │   ├── roles/
 │   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades
-│   │   ├── wireguard/          # hub/spoke 両対応 + nftables (DNAT / MSS clamp)
+│   │   ├── wireguard/          # hub/spoke 両対応 + nftables (masquerade / 公開ポート / MSS clamp)
+│   │   ├── cluster_lan/        # クラスタ用の第 2 サブネットを LAN NIC に追加(netplan)
+│   │   ├── reverse_proxy/      # Linode 上の Caddy(proxy_routes → 拠点ノード :80)
+│   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort)
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
 │   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
 │   └── playbooks/              # site.yml = gateway.yml + cluster.yml
@@ -68,10 +75,10 @@ moripa-infra/
 │       │   │   └── root-app.yaml
 │       │   ├── infrastructure/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
-│       │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80/:443)
+│       │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Caddy 側)
 │       │   │   └── monitoring/
 │       │   └── apps/
-│       │       └── minecraft/          # eTP Local + DNAT 先ノードにピン
+│       │       └── minecraft/          # NodePort(HAProxy 経由、Velocity 配下)
 │       └── site2/              # site1 と同構造(apps は空の雛形)
 ├── scripts/                    # check_consistency.py / check_secrets.sh
 ├── docs/                       # fumadocs ドキュメントサイト(Workers へ自動デプロイ)
@@ -83,12 +90,13 @@ moripa-infra/
 ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 
 1. **Terraform**: Linode Nanode 作成 (`terraform/envs/prod`)
-2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables (masquerade / DNAT) を設定
+2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables + Caddy + HAProxy を設定
 3. **Ansible `cluster.yml`**(両拠点を順に処理):
    1. `base` + `wireguard`: 全ノードを spoke として接続
-   2. `k8s_prereq`: containerd / kubeadm 導入
-   3. `k8s_bootstrap`: 拠点ごとに `kubeadm init --skip-phases=addon/kube-proxy` → join
-   4. Cilium を Helm で投入 (kube-proxy replacement 有効、common + site values)
+   2. `cluster_lan`: 第 2 サブネットの固定アドレスを LAN NIC に追加(ルーター設定不要)
+   3. `k8s_prereq`: containerd / kubeadm 導入
+   4. `k8s_bootstrap`: 拠点ごとに node1 で `kubeadm init --skip-phases=addon/kube-proxy` → node2 を worker として join
+   5. Cilium を Helm で投入 (kube-proxy replacement 有効、common + site values)
 4. **ArgoCD 導入**(拠点ごと): `make bootstrap-argocd SITE=site1` / `SITE=site2`
 5. 以降は各拠点の ArgoCD が `kubernetes/common/` + `kubernetes/sites/<site>/` を同期。
    Cilium の Helm リリースも ArgoCD が引き取る(同じ values を使うこと)
@@ -103,28 +111,23 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | 項目 | 値 | 備考 |
 |---|---|---|
 | ノードの OS | Ubuntu 26.04.1 LTS server | 確定 |
-| 拠点構成 | 2拠点 × 3台、拠点ごとに独立クラスタ | 各拠点 3台全部 control-plane(stacked etcd・schedulable)、API VIP は kube-vip |
-| site1 LAN CIDR | 192.168.10.0/24(提案値) | ノード .11–.13 は **DHCP + ルーター側 MAC 予約で固定**。kube-vip VIP .10 は DHCP プール外に |
-| site2 LAN CIDR | 192.168.20.0/24(提案値) | 同上 |
-| ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host は wg アドレス。LAN IP は k8s 用に実行時ファクトで取得 |
-| WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.13、site2 は .21–.23。LAN / Pod / Service と重複しないこと |
+| 拠点構成 | 2拠点 × 2台、拠点ごとに独立クラスタ | node1 = control-plane(stacked etcd・schedulable)、node2 = worker。API VIP は kube-vip(固定アドレス目的。CP 1台なので HA ではない) |
+| ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が第 2 サブネットの固定アドレス(`lan_address`)を LAN NIC に追加する |
+| クラスタ用サブネット | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | `cluster_lan_cidr`。node1 `.11`、node2 `.12`、VIP `.10`。実際の LAN と被ったら変更 |
+| ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
+| WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
-| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
+| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | 25565 は HAProxy(`tcp_routes`、Velocity 配下)、80/443 は Caddy(`proxy_routes` でホスト名 → 拠点)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## 注意: Nanode の転送量上限
 
-Nanode は **1TB/月** の転送量制限と共有1vCPU。フルトンネル構成では6台分の
-外向き通信(イメージ pull, OS 更新, 公開サービスのトラフィック)がすべてここを通る。
-超過しそうな場合は、egress は直接出す split-tunnel への切り替えを検討する。
-ただし **AllowedIPs を 10.100.0.0/24 に絞るだけでは DNAT が壊れる**ので注意
-(DNAT された inbound パケットは送信元がクライアントの公開IPのままトンネルを
-通るため、cryptokey routing で破棄され、戻り経路も非対称になる)。
-split-tunnel にする場合の選択肢:
-- `AllowedIPs = 0.0.0.0/0` は維持しつつ `Table = off` + 独自ルーティングルールで
-  egress だけ直接出す(クライアントの実IPは保持される)
-- ハブ側で wg0 向けに SNAT する(簡単だがノードから見た接続元がすべて
-  ハブになるため、IP でのBAN等ができなくなる)
+Nanode は **1TB/月** の転送量制限と共有1vCPU。フルトンネル構成では4台分の
+外向き通信(イメージ pull, OS 更新, 公開サービスのトラフィック)と
+Caddy / HAProxy の中継分がここを通る(クラスタ内通信は LAN 直通なので通らない)。
+超過しそうな場合は、egress を直接出す split-tunnel(`AllowedIPs = 10.100.0.0/24`)
+への切り替えが可能。公開経路は Caddy / HAProxy がハブ発で接続するため
+split-tunnel でも壊れない(ノードの外向き IP が自宅回線になる点だけ変わる)。
 
 ## 次のステップ
 
@@ -133,3 +136,5 @@ split-tunnel にする場合の選択肢:
 - [x] terraform / ansible / kubernetes の各実装
 - [ ] 実鍵の生成(age 鍵 3種、wg 鍵)→ 管理者向けドキュメント(docs/content/docs/admin/)
 - [ ] 実機適用(管理者向けドキュメント(docs/content/docs/admin/) の手順に従う)
+- [ ] etcd の定期バックアップ(control-plane が 1台のため必須。未実装)
+- [ ] 公開ホスト名の DNS を Linode に向け、`proxy_routes` に登録

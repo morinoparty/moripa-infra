@@ -1,6 +1,6 @@
 ---
 title: 定常運用
-description: SSH経路、DNATフェイルオーバー、VIP全損時の挙動、転送量監視など
+description: SSH経路、Caddy / HAProxy の公開ルート運用、Linode・control-plane 障害時の挙動、転送量監視など
 ---
 
 構築が完了したあとの、日常的な運用手順とトラブル対応の指針。
@@ -24,68 +24,85 @@ ssh moripa@10.100.0.21   # site2-node1
   `/docs/admin/terraform` 参照)。
 </Callout>
 
-## DNAT フェイルオーバー手順
+## 公開ホスト名(Caddy)の追加・変更
 
-DNAT 先ノード(例: site1-node1)が障害を起こした場合の切り替え手順。
+HTTP/HTTPS の公開は Linode 上の Caddy が担う。ホスト名の追加は
+`ansible/group_vars/all/network.yml` の `proxy_routes` に `{ host, site }` を
+足して `make gateway` を実行するだけでよい(Caddyfile の検証後に reload、
+wg や HAProxy には触れない)。手順の全体は `/docs/architecture/multi-site` の
+「公開サービスと拠点の対応」を参照。
 
-```mermaid
-flowchart TD
-    A["障害ノードを検知"] --> B["network.yml の dnat_rules[].target を別ノードのwgアドレスに変更"]
-    B --> C["make gateway を再実行"]
-    C --> D["対象アプリのPod nodeSelector も同時に変更"]
-    D --> E["make check-consistency で対応関係を検証"]
-```
+- ノード障害時の切り替えは Caddy が自動で行う(失敗した upstream を 30秒
+  外し、別ノードへ再試行)。手作業は不要
+- 証明書は Let's Encrypt(HTTP-01)で自動取得・更新される。取得に失敗する
+  場合は DNS が `gateway_public_ip` を向いているか、Cloud Firewall と nftables で
+  80/443 が開いているかを `journalctl -u caddy` と合わせて確認する
+- Caddy の状態は `ssh moripa@10.100.0.1 systemctl status caddy`
 
-`ansible/group_vars/all/network.yml` の `dnat_rules[].target` を別ノードの
-wg アドレスに変更し `make gateway` を再実行する。Minecraft のような
-`externalTrafficPolicy: Local` + node ピン構成のアプリは、Pod の
-nodeSelector の変更も同時に行う必要がある。target と nodeSelector の
-対応関係は `make check-consistency` が検査する。
+## L4 サービス(HAProxy)の追加・変更
 
-## VIP 全損時の挙動
+Minecraft など HTTP 以外のサービスは Linode 上の HAProxy が受ける。
+`ansible/group_vars/all/network.yml` の `tcp_routes` に行を足して
+`make gateway` を実行する(`haproxy -c` で検証後に reload)。ノード障害時の
+切り替えは HAProxy の TCP ヘルスチェックが自動で行い、手作業は不要。
 
-kube-vip の VIP が全損すると、Cilium agent の API サーバー接続も切れる
-(kube-proxy replacement 構成のため `k8sServiceHost` が VIP を直指定して
-いる)。ただし**既存のデータプレーンはそのまま動き続ける**(新規の Pod
-スケジューリングや設定変更ができなくなるだけ)。復旧は各 control-plane の
-kubelet / kube-vip の状態確認から着手する。
+- 新しい port を足したら `terraform` の `public_tcp_ports` にも追加して
+  `make tf-apply`(Cloud Firewall)
+- `allowed_sources` に Velocity の IP を入れる。空だとバックエンドの
+  Minecraft(online-mode=false)に誰でも直接つなげる状態になり、Velocity の
+  forwarding secret だけが防壁になる
+- 状態確認: `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
+
+## Linode 障害時の挙動
+
+クラスタ内通信(etcd / API / kubelet / Pod の VXLAN)は拠点の LAN で直接
+行うため、Linode が落ちても**クラスタ自体は動き続ける**。止まるのは
+公開経路(Caddy / HAProxy)、ノードの egress(イメージ pull 等)、管理者の
+wg 経由アクセスの 3 つ。ノード側は wg の keepalive で自動再接続する。
+
+## control-plane(node1)障害時の挙動
+
+各拠点の control-plane は node1 の 1台。node1 が落ちると API サーバーと
+etcd が止まり、Cilium agent の API 接続も切れる(kube-proxy replacement
+構成のため `k8sServiceHost` が VIP を直指定している)。ただし **node2 上の既存のデータプレーンはそのまま動き
+続ける**(新規の Pod スケジューリングや設定変更ができなくなるだけ)。
+復旧は node1 の wg / kubelet / etcd の状態確認から着手し、ディスク全損
+なら etcd スナップショットからの復旧になる(バックアップの定期取得は未実装、
+README の次のステップ参照)。
 
 ## ノードの wg が死んだとき
 
 管理経路は wg のみ(`ansible_host` = wg アドレス)なので、ノードの wg が
-落ちると Ansible からも SSH からも到達できなくなる。復旧手段:
+落ちると Ansible からも SSH からも到達できなくなる(クラスタ内通信は LAN
+直通なのでクラスタ自体は影響を受けない)。復旧手段:
 
-1. 同一 LAN 内の別ノード経由で入る(`ssh moripa@10.100.0.12` → LAN IP へ)
+1. 同一 LAN 内の別ノード経由で入る(`ssh moripa@10.100.0.12` →
+   `ssh moripa@10.200.1.11`。`lan_address` は固定なので探す必要はない)
 2. それも不可なら現地でコンソールログインし、node-bootstrap スクリプトを
    再実行(`make node-bootstrap HOST=...` で再生成して渡す)
 
-また、ノードは DHCP のため**ルーターの MAC 予約を消さないこと**。予約が
-外れて LAN IP が変わると kubeadm/etcd が壊れる(クラスタ再構築級)。
-ルーター交換時は先に予約を移すこと。
+ノードの DHCP アドレスは変わってもよい(どこにも焼き込んでいない)。
+クラスタ用の `lan_address` は netplan で固定されており、DHCP とは無関係。
 
 ## wg syncconf と restart の使い分け
 
 | 変更内容 | 反映方法 | 理由 |
 |---|---|---|
-| Peer の追加・削除、AllowedIPs の変更など | `wg syncconf`(Ansible の handler) | 既存セッション・DNAT 経由の接続を切断せずに反映できる |
-| `Address` / `MTU` / `PostUp` などの Interface 行 | `wg-quick@wg0 restart`(計画的に実施) | インターフェース自体の再構築が必要なため、フルトンネル確立後の restart は自分の管理セッションを切断する |
+| Peer の追加・削除、AllowedIPs の変更など | `wg syncconf`(Ansible の handler) | 既存セッション・クラスタ通信・公開経路の接続を切断せずに反映できる |
+| `Address` / `MTU` / `PostUp` などの Interface 行 | `wg-quick@wg0 restart`(計画的に実施) | インターフェース自体の再構築が必要なため、フルトンネル確立後の restart は自分の管理セッションと公開経路を切断する(クラスタ内通信は LAN 直通なので無傷) |
 
 ## Nanode の転送量監視
 
 Nanode は **1TB/月の転送量制限**と共有1vCPUという制約がある。フルトンネル
-構成では6台分の外向き通信(イメージ pull、OS 更新、公開サービスのトラフィック)
-がすべてゲートウェイを経由するため、Linode ダッシュボードで**月次**に
-転送量を確認すること。
+構成では4台分の外向き通信(イメージ pull、OS 更新、公開サービスのトラフィック)
+に加え、Caddy / HAProxy の中継分がゲートウェイを経由するため(クラスタ内
+通信は LAN 直通なので通らない)、Linode ダッシュボードで**月次**に転送量を
+確認すること。
 
-超過しそうな場合は split-tunnel への切り替えを検討する。ただし
-**`AllowedIPs` を `10.100.0.0/24` に絞るだけでは DNAT が壊れる**(DNAT
-された inbound パケットは送信元がクライアントの公開IPのままトンネルを
-通るため、cryptokey routing で破棄され戻り経路も非対称になる)。選択肢:
-
-- `AllowedIPs = 0.0.0.0/0` は維持しつつ `Table = off` + 独自ルーティング
-  ルールで egress だけ直接出す(クライアントの実IPは保持される)
-- ハブ側で wg0 向けに SNAT する(実装は簡単だが、ノードから見た接続元が
-  すべてハブになり IP でのアクセス制限ができなくなる)
+超過しそうな場合は、egress を直接出す split-tunnel(ノード側の `AllowedIPs`
+を `10.100.0.0/24` に絞る)へ切り替えられる。公開経路は Caddy / HAProxy が
+ハブ発で wg アドレスへ接続するため split-tunnel でも壊れない(ノードの外向き
+IP が自宅回線になる点だけ変わる)。
 
 ## unattended-upgrades の blacklist 方針
 

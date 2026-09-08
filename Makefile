@@ -35,7 +35,7 @@ tf-output: ## gateway_public_ip を表示(ansible/group_vars/all/network.yml へ
 gateway: ## Linode ゲートウェイを構成
 	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/gateway.yml
 
-cluster: ## 6台のノードを構成(wg → k8s)
+cluster: ## 4台のノードを構成(wg → k8s)
 	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/cluster.yml
 
 site: ## 全体を構成

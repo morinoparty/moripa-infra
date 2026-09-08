@@ -26,11 +26,12 @@ PrivateKey = {{ wg_private_key }}
 MTU        = {{ wg_mtu }}
 {# フルトンネル時、wg-quick は fwmark + policy routing を設定する。
    suppress_prefixlength 0 により main テーブルの具体的経路が勝つが、
-   LAN / Pod / Service 向けは念のため明示的に main を固定する #}
-{% for cidr in [lan_cidr, pod_cidr, service_cidr] %}
+   クラスタ用サブネット / Pod / Service 向けは念のため明示的に main を固定する
+   (ノード間通信を LAN 直通に保ち、トンネルに乗せない) #}
+{% for cidr in [cluster_lan_cidr, pod_cidr, service_cidr] %}
 PostUp   = ip rule add to {{ cidr }} lookup main priority 100
 {% endfor %}
-{% for cidr in [lan_cidr, pod_cidr, service_cidr] %}
+{% for cidr in [cluster_lan_cidr, pod_cidr, service_cidr] %}
 PostDown = ip rule del to {{ cidr }} lookup main priority 100
 {% endfor %}
 

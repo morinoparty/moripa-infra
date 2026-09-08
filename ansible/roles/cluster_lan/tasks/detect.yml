@@ -1,0 +1,22 @@
+# LAN NIC を検出して cluster_lan_interface に入れる。
+# フルトンネル下では `ip route get` が policy routing で wg0 を返すため
+# ansible_default_ipv4 は使えない。main テーブルの default route(DHCP が入れる)
+# の dev が LAN NIC。lan_interface が指定されていればそれを使う
+- name: LAN NIC を main テーブルの default route から検出
+  ansible.builtin.command: ip -4 -o route show table main default
+  register: cluster_lan_route
+  changed_when: false
+  when: not lan_interface
+
+- name: cluster_lan_interface を確定
+  ansible.builtin.set_fact:
+    cluster_lan_interface: >-
+      {{ lan_interface if lan_interface
+         else (cluster_lan_route.stdout.split() | list)[(cluster_lan_route.stdout.split() | list).index('dev') + 1] }}
+
+- name: LAN NIC が wg0 でないことを確認
+  ansible.builtin.assert:
+    that:
+      - cluster_lan_interface is match('^[a-zA-Z0-9_.-]+$')
+      - cluster_lan_interface != wg_interface
+    fail_msg: "LAN NIC の検出に失敗({{ cluster_lan_interface }})。group_vars の lan_interface で固定すること"

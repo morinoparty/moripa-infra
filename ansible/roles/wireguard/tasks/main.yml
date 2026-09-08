@@ -29,7 +29,7 @@
     cache_valid_time: 3600
   become: true
 
-- name: rp_filter を loose に設定(DNAT で wg0 から届く外部 src を落とさない)
+- name: rp_filter を loose に設定(ハブ経由で wg0 に届くパケットを reverse path 検査で落とさない安全側の設定)
   ansible.posix.sysctl:
     name: "{{ item }}"
     value: "2"
@@ -56,6 +56,14 @@
     enabled: true
     state: started
   become: true
+
+- name: proxy_public_ports と tcp_routes の port が重複しないことを確認(hub のみ)
+  ansible.builtin.assert:
+    that:
+      - (tcp_routes | map(attribute='port') | intersect(proxy_public_ports)) | length == 0
+      - (tcp_routes | map(attribute='port') | unique | length) == (tcp_routes | length)
+    fail_msg: "tcp_routes の port が proxy_public_ports(Caddy)または他の tcp_routes と重複している"
+  when: wg_role == "hub"
 
 - name: nftables ルールを配布(hub のみ)
   ansible.builtin.template:

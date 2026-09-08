@@ -4,11 +4,17 @@
     - base
     - wireguard
 
+- name: クラスタ用の第 2 サブネットを LAN NIC に追加(全拠点)
+  hosts: k8s_cluster
+  roles:
+    - cluster_lan
+
 - name: k8s 前提(containerd / kubeadm)(全拠点)
   hosts: k8s_cluster
   roles:
     - k8s_prereq
 
+# 各拠点の control-plane は現状 1台(node1)。将来 CP を追加する場合も
 # serial: 1 で先頭 CP の init 完了後に残りが順に join する
 # (etcd メンバー追加の同時実行を避ける)。拠点ごとに独立したクラスタ
 - name: site1 control-plane を構築
@@ -27,7 +33,7 @@
       vars:
         k8s_bootstrap_mode: control_plane
 
-- name: worker を join(現状は空グループ。ノード追加時に有効になる)
+- name: worker を join(各拠点の node2)
   hosts: site1_workers:site2_workers
   roles:
     - role: k8s_bootstrap

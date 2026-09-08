@@ -25,15 +25,31 @@ description: Pod/Service CIDR共有の制約と、site3追加・worker追加の�
 
 ## 公開サービスと拠点の対応
 
-Linode の `dnat_rules`(`ansible/group_vars/all/network.yml`)の `target`
-をどの拠点のノードの wg アドレスにするかで、そのサービスの提供拠点が
-決まる。現状はすべて site1。site2 で公開するサービスを追加する場合は
-`target` を `10.100.0.2x` 系にして追加する。
+### HTTP/HTTPS: `proxy_routes`(Caddy)
 
-Minecraft のような `externalTrafficPolicy: Local` + node ピン構成では、
-Pod の `nodeSelector` と `dnat_rules` の `target` の対応関係を
-`make check-consistency` が検査する(詳細は `/docs/admin/operations` の
-DNAT フェイルオーバー手順)。
+`ansible/group_vars/all/network.yml` の `proxy_routes` に
+`{ host, site }` を追加すると、Linode 上の Caddy がそのホスト名を
+`site` の全ノード `:80`(Cilium Gateway)へ転送する。手順:
+
+1. DNS でホスト名を `gateway_public_ip` に向ける(先にやらないと
+   Caddy の証明書取得が失敗し続ける)
+2. `proxy_routes` に `{ host: "app.morino.party", site: site2 }` を追加して
+   `make gateway`
+3. 対象拠点のクラスタに、その `hostnames` を持つ HTTPRoute を
+   `kubernetes/sites/<site>/apps/` に追加(Gateway `public` を parentRef に)
+
+upstream は inventory から自動導出されるため、ノードの増減で `proxy_routes`
+を触る必要はない。
+
+### L4(Minecraft 等): `tcp_routes`(HAProxy)
+
+`tcp_routes` に `{ name, port, site, node_port, allowed_sources }` を追加すると、
+Linode 上の HAProxy がその port を `site` の全ノードの NodePort へ転送する。
+現状は site1 の Minecraft(25565 → NodePort 30565)のみ。site2 にも Minecraft を
+置くなら別の port(例: 25566)で行を足し、`terraform` の `public_tcp_ports`
+にもポートを足す。Velocity 側はバックエンドごとに `Linode の IP:port` を
+登録する。`allowed_sources` に Velocity の IP を入れて、バックエンドへの
+直接接続を防ぐこと。
 
 ## 拠点を追加する場合(site3 の例)
 
@@ -48,10 +64,11 @@ flowchart TD
     G --> H["make bootstrap-argocd SITE=site3"]
 ```
 
-1. `ansible/inventory/hosts.yml` に site3 グループを追加(wg は
-   `10.100.0.31`〜 を採番)
-2. `ansible/group_vars/site3.yml` を作成(`lan_cidr` / `kube_vip_address` /
-   グループ名 / values パス)
+1. `ansible/inventory/hosts.yml` に site3 グループを追加(`wg_address` は
+   `10.100.0.31`〜、`lan_address` は `10.200.3.11`〜 を採番。node1 を
+   `site3_control_plane`、node2 を `site3_workers` に)
+2. `ansible/group_vars/site3.yml` を作成(`cluster_lan_cidr` = `10.200.3.0/24` /
+   `kube_vip_address` = `10.200.3.10` / グループ名 / values パス)
 3. `kubernetes/sites/site3/` を site2 からコピーしてサイト名を置換
 4. `ansible/playbooks/cluster.yml` に site3 の control-plane 構築 play を追加
 5. `Makefile` の `KUSTOMIZE_DIRS`、CI の kustomize リスト、
@@ -59,8 +76,15 @@ flowchart TD
 6. wg 鍵生成 → `make gateway`(ハブの peer が増える)→ `make cluster` →
    `make bootstrap-argocd SITE=site3`
 
-## 既存拠点のクラスタに worker を足す場合
+## 既存拠点のクラスタにノードを足す場合
 
-inventory の `site<N>_workers`(現状は空グループ)にホストを追加して
-wg 鍵を生成し、`make cluster` を再実行するだけでよい(kubeadm の join は
-冪等なため、既存ノードへの再実行は無害)。
+worker を足すなら inventory の `site<N>_workers`(現状 node2 のみ)に
+ホストを追加(`wg_address` と `lan_address` を採番)して wg 鍵を生成し、
+`make cluster` を再実行するだけでよい
+(kubeadm の join は冪等なため、既存ノードへの再実行は無害)。Caddy の
+upstream は inventory から導出されるため自動で追加される。
+
+control-plane を足して etcd を冗長化したい場合は `site<N>_control_plane` に
+追加する(`controlPlaneEndpoint` は kube-vip の VIP なので再構築は不要)。
+ただし etcd は**奇数メンバー**でないと意味がないため、2 CP ではなく
+3 CP(3台目を追加)にすること。

@@ -1,5 +1,7 @@
 # Let's Encrypt の ClusterIssuer(DNS-01)。
-# HTTP-01 は「DNAT 先ノード固定」に依存するため DNS-01 を推奨。
+# 公開サービスの TLS は Linode 上の Caddy が終端するため、クラスタ内で
+# 公開用証明書は不要。クラスタ内部向け(監視 UI 等)に証明書が要る場合の雛形。
+# HTTP-01 は外部からノードの :80 に直接届かない(Caddy が前段)ため使えず、DNS-01 のみ。
 # 使い方:
 #   1. DNS プロバイダのトークン Secret を ksops で作成(secret-generator 経由)
 #   2. このファイルを clusterissuer.yaml にコピーして solver を自分の

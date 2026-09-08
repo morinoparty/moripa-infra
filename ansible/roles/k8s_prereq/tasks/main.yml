@@ -98,11 +98,11 @@
   loop: [kubeadm, kubelet, kubectl]
   become: true
 
-- name: kubelet の node-ip を LAN IP に固定
+- name: kubelet の node-ip をクラスタ用アドレスに固定(InternalIP = lan_address。Cilium の VXLAN 端点もこれになる)
   ansible.builtin.copy:
     dest: /etc/default/kubelet
     content: |
-      KUBELET_EXTRA_ARGS=--node-ip={{ ansible_default_ipv4.address }}
+      KUBELET_EXTRA_ARGS=--node-ip={{ lan_address }}
     mode: "0644"
   become: true
   notify: Restart kubelet

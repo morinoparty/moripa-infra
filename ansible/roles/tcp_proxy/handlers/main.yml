@@ -1,0 +1,6 @@
+# Ubuntu の unit は master-worker(-Ws)なので reload は既存接続を切らない
+- name: Reload haproxy
+  ansible.builtin.systemd_service:
+    name: haproxy
+    state: reloaded
+  become: true

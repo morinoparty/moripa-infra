@@ -70,7 +70,7 @@ def main() -> None:
     )
     priv = yaml.safe_load(dec.stdout)["wg_private_key"]
 
-    exclude = [sv["lan_cidr"], net["pod_cidr"], net["service_cidr"]]
+    exclude = [sv["cluster_lan_cidr"], net["pod_cidr"], net["service_cidr"]]
     post_up = "\n".join(f"PostUp   = ip rule add to {c} lookup main priority 100" for c in exclude)
     post_down = "\n".join(f"PostDown = ip rule del to {c} lookup main priority 100" for c in exclude)
 

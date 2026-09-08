@@ -1,3 +1,9 @@
+# kube-vip の vip_interface に LAN NIC 名が要る(kube_vip_interface = cluster_lan_interface)
+- name: LAN NIC を検出
+  ansible.builtin.include_role:
+    name: cluster_lan
+    tasks_from: detect
+
 - name: 先頭 control-plane かどうかを判定
   ansible.builtin.set_fact:
     k8s_bootstrap_is_first_cp: "{{ inventory_hostname == groups[k8s_cp_group][0] }}"
@@ -102,6 +108,7 @@
         cmd: >-
           {{ k8s_bootstrap_join_cmd.stdout }}
           --control-plane
+          --apiserver-advertise-address {{ lan_address }}
           --certificate-key {{ k8s_bootstrap_cert_key.stdout }}
         creates: /etc/kubernetes/kubelet.conf
       no_log: true

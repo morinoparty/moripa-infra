@@ -19,7 +19,7 @@ export LINODE_TOKEN=...   # tfvars にトークンは書かない
 |---|---|
 | `admin_ssh_keys` | 管理ユーザー(`moripa`)の SSH 公開鍵一覧 |
 | `bootstrap_ssh_cidrs` | 初回のみ SSH(22/tcp)を許可する CIDR(自分の現在の `/32`)。定常は空配列 |
-| `public_tcp_ports`(デフォルト値のまま) | 外部公開する TCP ポート。`ansible/group_vars/all/network.yml` の `dnat_rules` と一致させる(`make check-consistency` で検査) |
+| `public_tcp_ports`(デフォルト値のまま) | 外部公開する TCP ポート。`ansible/group_vars/all/network.yml` の `tcp_routes` の port(HAProxy)+ `proxy_public_ports`(Caddy の 80/443)と一致させる(`make check-consistency` で検査) |
 
 ## 実行
 

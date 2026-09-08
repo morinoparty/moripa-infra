@@ -1,10 +1,9 @@
 # ネットワーク値の唯一の正(README のテーブルはここの写し)。
-# 拠点固有の値(lan_cidr / kube_vip_address 等)は group_vars/site1.yml / site2.yml。
-# LAN CIDR を変更する場合: site*.yml + inventory/hosts.yml の ansible_host を修正
-
-# ノードの LAN NIC。デフォルト経路の NIC を自動検出(wg 確立前提の初回は LAN NIC = default)。
-# NIC 名が確定したら "enp1s0" 等で固定推奨
-lan_interface: "{{ ansible_default_ipv4.interface }}"
+# 拠点固有の値(cluster_lan_cidr / kube_vip_address 等)は group_vars/site1.yml / site2.yml。
+#
+# ノードの LAN は DHCP のまま(アパートのルーターは触れず、固定 IP も保証できない)。
+# クラスタ用には site*.yml の cluster_lan_cidr(ルーターと無関係な第 2 サブネット)を
+# LAN NIC に重ね、DHCP で貰う LAN IP はどこにも使わない。
 
 # terraform output -raw public_ip から転記(make tf-output)
 gateway_public_ip: "203.0.113.10"
@@ -19,8 +18,8 @@ gateway_wan_interface: eth0
 
 # inventory 外の WireGuard peer(管理者マシン等)。
 # SSH は wg 経由のみの運用なので、管理者マシンを必ずここに登録する
-wg_extra_peers: []
-#  - { name: admin, public_key: "REPLACE_WITH_REAL_PUBKEY", allowed_ips: 10.100.0.100/32 }
+wg_extra_peers:
+  - { name: admin, public_key: "SkO8raeJ3sYVa3zz3N8zlacUpQFPUrPd08fLWD1geVk=", allowed_ips: 10.100.0.100/32 }  # 管理者マシン(秘密鍵は ~/keys/wg-admin.key)
 
 # Pod / Service CIDR は両拠点で同一値を使う。クラスタ同士は接続しないため
 # 重複しても問題ない(将来 cluster mesh 等で接続するなら再IP設計が必要 →
@@ -29,12 +28,29 @@ pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
 kube_api_port: 6443
 
-# Linode 側 nftables の DNAT ルール(target は各ノードの wg アドレス)。
-# terraform/envs/prod の public_tcp_ports と dport が一致すること(check-consistency で検査)
-dnat_rules:
-  - { name: minecraft, proto: tcp, dport: 25565, target: 10.100.0.11, tport: 30565 }  # site1-node1 NodePort (eTP Local)
-  - { name: http, proto: tcp, dport: 80, target: 10.100.0.11, tport: 80 }    # site1 Cilium Gateway (hostNetwork)
-  - { name: https, proto: tcp, dport: 443, target: 10.100.0.11, tport: 443 }
+# Linode 上の HAProxy(L4 TCP プロキシ)。Minecraft など HTTP 以外のサービスを
+# port で受け、対象拠点の全ノードの NodePort へ wg 越しに転送する(ヘルスチェック付き)。
+# クライアント実IPは L4 では届かない(Minecraft は前段の Velocity が
+# modern forwarding でプレイヤー IP を渡す前提)。
+# allowed_sources を指定すると nftables でその送信元だけに絞る(Velocity の IP を
+# 入れて、バックエンドへの直接接続を防ぐこと。空なら全公開)。
+# terraform/envs/prod の public_tcp_ports = tcp_routes の port + proxy_public_ports
+# であること(check-consistency で検査)
+tcp_routes:
+  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: [] }
+#  - { name: minecraft-site2, port: 25566, site: site2, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
+
+# Linode 上の Caddy(リバースプロキシ)。HTTP/HTTPS はここで受けて TLS を終端し、
+# ホスト名ごとに対象拠点の全ノード :80(Cilium Gateway, hostNetwork)へ
+# wg 越しに転送する。upstream は inventory の groups[site] から自動導出するので
+# ノードの増減で編集不要。ノード障害時は Caddy が別ノードへ自動で切り替える。
+# 証明書は Let's Encrypt(HTTP-01)で自動取得するため、host の DNS を
+# gateway_public_ip に向けてから追加すること(未解決のホストは ACME に失敗し続ける)。
+# クライアント実IPは X-Forwarded-For で渡す(cilium values の xffNumTrustedHops=1 が前提)
+proxy_public_ports: [80, 443]
+proxy_acme_email: yahiro@morino.party
+proxy_routes: []
+#  - { host: "example.morino.party", site: site1 }
 
 # WireGuard インターフェース名
 wg_interface: wg0

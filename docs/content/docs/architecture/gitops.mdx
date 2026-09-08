@@ -27,10 +27,10 @@ kubernetes/
     │   │   └── root-app.yaml
     │   ├── infrastructure/
     │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
-    │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80/:443)
+    │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Linode の Caddy)
     │   │   └── monitoring/
     │   └── apps/
-    │       └── minecraft/          # eTP Local + DNAT先ノードにピン
+    │       └── minecraft/          # NodePort(Linode の HAProxy 経由、Velocity 配下)
     └── site2/              # site1 と同構造(apps は空の雛形)
 ```
 
@@ -53,8 +53,8 @@ graph LR
 |---|---|---|
 | -3 | `gateway-api-crds` | Gateway API CRD が無いと Cilium は Gateway 機能をサイレントに無効化し、後入れしても再起動まで有効にならない |
 | -2 | `cilium` | CNI。すべてのPod通信の前提 |
-| -1 | `cert-manager` | ingress より先にTLS証明書の仕組みを用意 |
-| 0 | `ingress` | Cilium Gateway API(hostNetwork、:80/:443) |
+| -1 | `cert-manager` | クラスタ内部向け証明書の仕組み(公開サービスの TLS は Linode 上の Caddy が終端するため必須ではない) |
+| 0 | `ingress` | Cilium Gateway API(hostNetwork、:80。Caddy からの転送を受ける) |
 | 1 | `monitoring` | 監視 |
 | 2 | `apps` | 個別アプリ(minecraft等) |
 

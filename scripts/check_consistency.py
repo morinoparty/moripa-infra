@@ -2,7 +2,7 @@
 """設定値の乖離を検査する。
 
 単一ソース(ansible/group_vars/)と、それを写した各所
-(cilium values / ArgoCD Application / terraform / minecraft)の整合を
+(cilium values / ArgoCD Application / terraform / minecraft / Caddy)の整合を
 サイトごとに突き合わせる。乖離があれば exit 1。
 """
 
@@ -38,17 +38,22 @@ def deep_merge(base: dict, override: dict) -> dict:
 
 
 def inventory_hosts() -> dict:
-    """inventory を辿り host → {wg_address, site} を返す"""
+    """inventory を辿り host → {wg_address, lan_address, site, group} を返す(group は直接の所属グループ)"""
     inv = load("ansible/inventory/hosts.yml")
     hosts: dict[str, dict] = {}
 
-    def walk(node: dict, site: str | None) -> None:
+    def walk(node: dict, site: str | None, group: str | None) -> None:
         for name, sub in (node.get("children") or {}).items():
-            walk(sub or {}, name if name in SITES else site)
+            walk(sub or {}, name if name in SITES else site, name)
         for name, hv in (node.get("hosts") or {}).items():
-            hosts[name] = {"wg_address": (hv or {}).get("wg_address"), "site": site}
+            hosts[name] = {
+                "wg_address": (hv or {}).get("wg_address"),
+                "lan_address": (hv or {}).get("lan_address"),
+                "site": site,
+                "group": group,
+            }
 
-    walk(inv["all"], None)
+    walk(inv["all"], None, None)
     return hosts
 
 
@@ -84,12 +89,23 @@ for site in SITES:
         f"[{site}] wg_interface が cilium devices に無い",
     )
 
-    # --- kube-vip VIP がその拠点の LAN CIDR 内にあること ----------------------
+    # --- kube-vip VIP と各ノードの lan_address が cluster_lan_cidr 内にあること ------
+    lan_net = ipaddress.ip_network(sv["cluster_lan_cidr"])
     check(
-        ipaddress.ip_address(sv["kube_vip_address"])
-        in ipaddress.ip_network(sv["lan_cidr"]),
-        f"[{site}] kube_vip_address={sv['kube_vip_address']} が lan_cidr={sv['lan_cidr']} の外",
+        ipaddress.ip_address(sv["kube_vip_address"]) in lan_net,
+        f"[{site}] kube_vip_address={sv['kube_vip_address']} が cluster_lan_cidr={lan_net} の外",
     )
+    for h, v in hosts.items():
+        if v["site"] != site:
+            continue
+        check(
+            v["lan_address"] is not None and ipaddress.ip_address(v["lan_address"]) in lan_net,
+            f"[{site}] {h} の lan_address={v['lan_address']} が cluster_lan_cidr={lan_net} の外",
+        )
+        check(
+            v["lan_address"] != sv["kube_vip_address"],
+            f"[{site}] {h} の lan_address が kube_vip_address と重複",
+        )
 
     # --- ArgoCD cilium Application ↔ versions.yml -----------------------------
     app = load(f"kubernetes/sites/{site}/bootstrap/applications/cilium.yaml")
@@ -101,6 +117,13 @@ for site in SITES:
         f"[{site}] cilium App targetRevision={chart_rev} != cilium_version={versions['cilium_version']}",
     )
 
+# --- wg_address は全体で、lan_address は拠点内で一意であること --------------------
+wg_all = [v["wg_address"] for v in hosts.values() if v["wg_address"]]
+check(len(wg_all) == len(set(wg_all)), f"wg_address が重複している: {wg_all}")
+for site in SITES:
+    lan_site = [v["lan_address"] for v in hosts.values() if v["site"] == site and v["lan_address"]]
+    check(len(lan_site) == len(set(lan_site)), f"[{site}] lan_address が重複している: {lan_site}")
+
 # --- Gateway API CRD kustomization ↔ versions.yml ----------------------------
 gwapi_kust = (ROOT / "kubernetes/common/gateway-api-crds/kustomization.yaml").read_text()
 check(
@@ -108,42 +131,53 @@ check(
     f"gateway-api-crds が {versions['gateway_api_version']} を参照していない",
 )
 
-# --- dnat_rules ↔ terraform public_tcp_ports ---------------------------------
+# --- tcp_routes + proxy_public_ports ↔ terraform public_tcp_ports -------------
+proxy_ports = {int(p) for p in network["proxy_public_ports"]}
+tcp_routes = network.get("tcp_routes") or []
+tcp_ports = {int(r["port"]) for r in tcp_routes}
+check(
+    not (proxy_ports & tcp_ports),
+    f"proxy_public_ports={sorted(proxy_ports)} と tcp_routes の port が重複している",
+)
+check(len(tcp_ports) == len(tcp_routes), "tcp_routes の port が重複している")
+for r in tcp_routes:
+    check(r.get("site") in SITES, f"tcp_routes {r.get('name')} の site={r.get('site')} が {SITES} に無い")
+    for cidr in r.get("allowed_sources") or []:
+        try:
+            ipaddress.ip_network(cidr)
+        except ValueError:
+            errors.append(f"tcp_routes {r.get('name')} の allowed_sources={cidr} が CIDR でない")
 tf_main = (ROOT / "terraform/envs/prod/main.tf").read_text()
 m = re.search(r'variable\s+"public_tcp_ports"[^}]*default\s*=\s*\[([^\]]*)\]', tf_main, re.S)
 if not m:
     errors.append("terraform の public_tcp_ports default をパースできない")
 else:
     tf_ports = {int(p) for p in re.findall(r"\d+", m.group(1))}
-    dnat_tcp = {int(r["dport"]) for r in network["dnat_rules"] if r["proto"] == "tcp"}
     check(
-        tf_ports == dnat_tcp,
-        f"terraform public_tcp_ports={sorted(tf_ports)} != dnat_rules(tcp dport)={sorted(dnat_tcp)}",
+        tf_ports == tcp_ports | proxy_ports,
+        f"terraform public_tcp_ports={sorted(tf_ports)} != "
+        f"tcp_routes(port) ∪ proxy_public_ports={sorted(tcp_ports | proxy_ports)}",
     )
 
-# --- dnat target が実在する wg アドレスであること ----------------------------
-wg_by_host = {h: v["wg_address"] for h, v in hosts.items()}
-for r in network["dnat_rules"]:
+# --- proxy_routes の site が実在する拠点であること -----------------------------
+for r in network.get("proxy_routes") or []:
     check(
-        r["target"] in wg_by_host.values(),
-        f"dnat {r['name']} の target={r['target']} がどのホストの wg_address でもない",
+        r.get("site") in SITES,
+        f"proxy_routes {r.get('host')} の site={r.get('site')} が {SITES} に無い",
     )
 
-# --- minecraft: nodePort と nodeSelector ↔ dnat_rules ------------------------
-mc_rule = next((r for r in network["dnat_rules"] if r["name"] == "minecraft"), None)
-if mc_rule:
-    svc = load("kubernetes/sites/site1/apps/minecraft/service.yaml")
+# --- minecraft: Service nodePort ↔ tcp_routes.node_port -----------------------
+mc_route = next((r for r in tcp_routes if r["name"] == "minecraft"), None)
+if mc_route:
+    svc = load(f"kubernetes/sites/{mc_route['site']}/apps/minecraft/service.yaml")
     node_ports = {p.get("nodePort") for p in svc["spec"]["ports"]}
     check(
-        int(mc_rule["tport"]) in node_ports,
-        f"minecraft Service nodePort={node_ports} に dnat tport={mc_rule['tport']} が無い",
+        int(mc_route["node_port"]) in node_ports,
+        f"minecraft Service nodePort={node_ports} に tcp_routes node_port={mc_route['node_port']} が無い",
     )
-    sts = load("kubernetes/sites/site1/apps/minecraft/statefulset.yaml")
-    pinned = sts["spec"]["template"]["spec"]["nodeSelector"]["kubernetes.io/hostname"]
     check(
-        wg_by_host.get(pinned) == mc_rule["target"],
-        f"minecraft の nodeSelector={pinned} (wg={wg_by_host.get(pinned)}) と "
-        f"dnat target={mc_rule['target']} が一致しない",
+        svc["spec"].get("externalTrafficPolicy", "Cluster") == "Cluster",
+        "minecraft Service は externalTrafficPolicy=Cluster にすること(HAProxy が全ノードへ振るため)",
     )
 
 if errors:

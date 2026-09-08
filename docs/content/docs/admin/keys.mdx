@@ -37,13 +37,24 @@ export SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey
 `cluster` 鍵は両拠点で**共有**する(サイト別に分離するより運用の単純さを
 優先する方針。詳細は `kubernetes/sites/site1/bootstrap/secrets/README.md`)。
 
-## WireGuard 鍵: 7ホスト分 + 管理者マシン
+<Callout title="秘密鍵のバックアップ" type="warn">
+  3 つの age 秘密鍵と管理者マシンの wg 秘密鍵は `~/keys/` にしか存在しない。
+  admin 鍵を失うとリポジトリ内の暗号化ファイルを誰も復号できず、cluster 鍵を
+  失うと ArgoCD の bootstrap ができない。生成したらすぐ安全な場所(パスワード
+  マネージャ等)に控えること。
+</Callout>
+
+ci 鍵の秘密部は `gh secret set SOPS_AGE_KEY -R morinoparty/moripa-infra` で
+登録する(CI の `ansible-inventory` が `*.sops.yml` を復号するのに使う)。
+ローカルで `make lint` を通すにも `SOPS_AGE_KEY_FILE` と `sops` が必要。
+
+## WireGuard 鍵: 5ホスト分 + 管理者マシン
 
 `make wg-keygen HOST=<host>` で秘密鍵を sops 暗号化しつつ生成し、公開鍵を
-表示する。対象は以下の7ホスト。
+表示する。対象は以下の5ホスト。
 
 ```sh
-for h in linode-gw site1-node{1..3} site2-node{1..3}; do make wg-keygen HOST=$h; done
+for h in linode-gw site1-node{1..2} site2-node{1..2}; do make wg-keygen HOST=$h; done
 ```
 
 表示された公開鍵は `ansible/host_vars/<host>/main.yml` に追記(コミット対象)。
@@ -91,7 +102,7 @@ deploy key の生成・登録は不要。
 | age admin | `age-keygen` | 管理者の手元 | (個人鍵) |
 | age ci | `age-keygen` | GitHub Actions Secrets | (CI 用) |
 | age cluster | `age-keygen` | 両拠点の repo-server Secret | 共有 |
-| wg: linode-gw 他6ホスト | `make wg-keygen HOST=...` | `ansible/host_vars/<host>/` | ホストごとに別鍵 |
+| wg: linode-gw 他4ホスト | `make wg-keygen HOST=...` | `ansible/host_vars/<host>/` | ホストごとに別鍵 |
 | wg: 管理者マシン | `wg genkey` | 管理者マシン + `network.yml` の `wg_extra_peers` | (個人鍵) |
 
 ## 現地作業者に渡すもの
@@ -104,8 +115,9 @@ deploy key の生成・登録は不要。
 | `moripa` ユーザーのパスワード | OS ログイン用 |
 | ブートストラップコマンド | 下記参照 |
 
-IP アドレスの類は渡さなくてよい(ノードは DHCP で、LAN IP の固定は後から
-管理者がルーター側の MAC 予約で行う → [Ansible 実行](/docs/admin/ansible))。
+IP アドレスの類は渡さなくてよい(ノードの LAN は DHCP のままでよく、
+固定は不要。クラスタ用の固定アドレスは Ansible が第 2 サブネットで付ける
+→ [Ansible 実行](/docs/admin/ansible))。
 
 ### ブートストラップコマンドとして用意するもの
 
@@ -130,6 +142,5 @@ make node-bootstrap HOST=site1-node1
 </Callout>
 
 このコマンドの実行が完了すると、そのノードは wg spoke としてハブに接続され、
-以降の作業(DHCP 予約の登録を含む)は管理者がリモートから実行できるように
-なる。**wg が張られていないノードには Ansible は一切到達できない**ため、
+以降の作業はすべて管理者がリモートから実行できるようになる。**wg が張られていないノードには Ansible は一切到達できない**ため、
 node-bootstrap は利便機能ではなく必須の前提ステップである。

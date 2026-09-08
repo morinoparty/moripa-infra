@@ -32,8 +32,24 @@ jobs:
       - name: yamllint
         run: .venv/bin/yamllint .
 
+      # community.sops の vars plugin が host_vars/*/wireguard.sops.yml を復号するため、
+      # ansible-inventory / syntax-check には sops バイナリと ci 用 age 鍵が要る
+      # (fork からの PR では secrets が渡らずこのステップは失敗する)
+      - name: sops を導入
+        env:
+          SOPS_VERSION: v3.13.3
+        run: |
+          base="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}"
+          curl -sSL -o /tmp/sops "${base}/sops-${SOPS_VERSION}.linux.amd64"
+          curl -sSL -o /tmp/sops.sha "${base}/sops-${SOPS_VERSION}.checksums.txt"
+          expected=$(grep "sops-${SOPS_VERSION}.linux.amd64$" /tmp/sops.sha | awk '{print $1}')
+          echo "${expected}  /tmp/sops" | sha256sum -c -
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+
       - name: ansible-lint / syntax-check / inventory
         working-directory: ansible
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
         run: |
           ../.venv/bin/ansible-lint
           for pb in playbooks/*.yml; do ../.venv/bin/ansible-playbook --syntax-check "$pb"; done

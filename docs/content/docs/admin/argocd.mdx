@@ -8,8 +8,10 @@ CNI が入っていないクラスタでは ArgoCD 自体が正常に動けな�
 
 ## 実行
 
-kubeconfig をその拠点のクラスタ(API サーバーは kube-vip の VIP)に向けて
-から実行する。
+kubeconfig をその拠点のクラスタに向けて wg 経由で実行する。kubeadm の
+`admin.conf` は kube-vip の VIP(`10.200.1.10:6443`)を指すが VIP は wg から
+届かないため、手元の kubeconfig は server を node1 の wg アドレス
+(site1 は `https://10.100.0.11:6443`)に書き換えたものを使う。
 
 ```sh
 KUBECONFIG=~/kube/site1 make bootstrap-argocd SITE=site1
@@ -58,8 +60,8 @@ Secret は不要。
 |---|---|---|
 | -3 | `gateway-api-crds` | Gateway API CRD(Cilium より先に必須) |
 | -2 | `cilium` | Cilium(Ansible の Helm リリースを引き取る) |
-| -1 | `cert-manager` | cert-manager |
-| 0 | `ingress` | Cilium Gateway API(hostNetwork) |
+| -1 | `cert-manager` | cert-manager(クラスタ内部向け。公開 TLS は Linode の Caddy) |
+| 0 | `ingress` | Cilium Gateway API(hostNetwork :80、Caddy からの転送を受ける) |
 | 1 | `monitoring` | 監視 |
 | 2 | `apps` | 第2の app-of-apps(`kubernetes/sites/<site>/apps/`) |
 

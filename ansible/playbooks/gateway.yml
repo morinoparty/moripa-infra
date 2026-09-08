@@ -1,5 +1,7 @@
-- name: Linode ゲートウェイ(WireGuard ハブ + NAT)を構成
+- name: Linode ゲートウェイ(WireGuard ハブ + NAT + Caddy + HAProxy)を構成
   hosts: gateway
   roles:
     - base
     - wireguard
+    - reverse_proxy
+    - tcp_proxy

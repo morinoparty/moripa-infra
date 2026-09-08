@@ -19,23 +19,29 @@ ipam:
       - 10.244.0.0/16
 
 # NodePort / hostNetwork のトラフィックを受ける NIC。
-# wg0 必須(Linode からの DNAT は wg0 に着信する)。
-# "e+" は LAN NIC のプレフィックスマッチ(enp*/eno*/eth*)。NIC 名確定後は実名に置換推奨
+# "e+" は LAN NIC のプレフィックスマッチ(enp*/eno*/eth*)。ノードの InternalIP
+# (lan_address)と VXLAN はここ。wg0 は Linode の Caddy / HAProxy からの転送が
+# 着信するので必須。NIC 名確定後は実名に置換推奨
 devices:
   - e+
   - wg0
 
 # ベース MTU を明示(wg0 の 1420 を最小値として誤検出させない)。
-# VXLAN の Pod MTU は 1500 - 50 = 1450。
+# ノード間の VXLAN は LAN 直通(1500)なので Pod MTU は 1500 - 50 = 1450。
 # 南北 egress の wg 経由分はハブ側の MSS clamp で救済する(docs/content/docs/architecture/wireguard.mdx)
 MTU: 1500
 
 gatewayAPI:
   enabled: true
-  # Envoy がノードの :80/:443 に直接 listen し、Linode の DNAT を
-  # NodePort 変換なし(= クライアント実IP保持)で受ける
+  # Envoy が全ノードの :80 に直接 listen し、Linode 上の Caddy(リバースプロキシ)
+  # からの転送を wg0 で受ける。TLS は Caddy が終端するので listener は HTTP のみ
   hostNetwork:
     enabled: true
+  # Caddy が付ける X-Forwarded-For の右端 1 ホップ(= Caddy)を信頼し、
+  # クライアント実IPをアプリへ渡す。外部から :80 へは Caddy 経由でしか届かない
+  # (Cloud Firewall + nftables)ため、外部からの偽装 XFF は混入しない
+  # (LAN 内のホストからは直接 :80 に届くので、LAN は信頼する前提)
+  xffNumTrustedHops: 1
 
 envoy:
   securityContext:

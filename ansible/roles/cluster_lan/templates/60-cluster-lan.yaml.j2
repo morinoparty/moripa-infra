@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# クラスタ用の第 2 サブネット。DHCP(50-cloud-init.yaml 等)の設定とマージされ、
+# 同じ NIC に固定アドレスが追加される。ルーターの設定は不要
+network:
+  version: 2
+  ethernets:
+    {{ cluster_lan_interface }}:
+      addresses:
+        - {{ lan_address }}/{{ cluster_lan_cidr.split('/')[1] }}

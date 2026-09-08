@@ -1,0 +1,40 @@
+# Linode(ハブ)上の HAProxy(L4 TCP)。tcp_routes の port を受けて対象拠点の
+# 全ノードの NodePort へ wg 越しに転送する。Minecraft は前段の Velocity から
+# ここへ接続する想定(プレイヤー IP は Velocity の modern forwarding で渡す)。
+# 設計: docs/content/docs/architecture/wireguard.mdx(公開経路の節)
+
+- name: tcp_routes の site が inventory のグループであることを確認
+  ansible.builtin.assert:
+    that:
+      - item.site in groups
+      - groups[item.site] | length > 0
+    fail_msg: "tcp_routes[{{ item.name }}].site={{ item.site }} が inventory のグループに無い"
+  loop: "{{ tcp_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: HAProxy を導入
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: haproxy.cfg を配布
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    validate: haproxy -c -f %s
+  become: true
+  notify: Reload haproxy
+
+- name: HAProxy を有効化・起動
+  ansible.builtin.systemd_service:
+    name: haproxy
+    enabled: true
+    state: started
+  become: true

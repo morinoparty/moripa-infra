@@ -1,0 +1,7 @@
+# reload は admin API(localhost:2019)経由で無停止に反映される。
+# Caddyfile で admin を off にしないこと(reload が失敗する)
+- name: Reload caddy
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: reloaded
+  become: true

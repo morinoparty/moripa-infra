@@ -15,10 +15,10 @@ spec:
       labels:
         app: minecraft
     spec:
-      # DNAT 先ノードにピン(eTP Local のため必須)。
-      # フェイルオーバー時は network.yml の dnat_rules と合わせて変更する
-      nodeSelector:
-        kubernetes.io/hostname: site1-node1
+      # ノードにはピンしない(HAProxy が両ノードの NodePort へ振るため)。
+      # ただし local-path 等のノードローカルストレージを使う場合は PVC で
+      # 実質ピンされる。Velocity 配下なので online-mode=false + modern forwarding
+      # (Paper の config/paper-global.yml: proxies.velocity)を有効にすること
       containers:
         - name: minecraft
           image: itzg/minecraft-server:latest

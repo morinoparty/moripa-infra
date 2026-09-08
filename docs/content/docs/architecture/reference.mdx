@@ -1,6 +1,6 @@
 ---
 title: ネットワーク値・バージョン一覧
-description: CIDR・VIP・DNATルール・各コンポーネントのバージョンの一覧
+description: CIDR・VIP・Caddy / HAProxy の公開ルート・各コンポーネントのバージョンの一覧
 ---
 
 <Callout title="唯一の正は ansible/group_vars">
@@ -16,29 +16,40 @@ description: CIDR・VIP・DNATルール・各コンポーネントのバージ�
 | 項目 | 値 | 備考 |
 |---|---|---|
 | ノードの OS | Ubuntu 26.04.1 LTS server | 全ノード共通 |
-| 拠点構成 | 2拠点 × 3台、拠点ごとに独立クラスタ | 各拠点3台全部 control-plane(stacked etcd・schedulable)、API VIP は kube-vip |
-| site1 LAN CIDR | `192.168.10.0/24` | ノード `.11`–`.13`(**DHCP + ルーター側 MAC 予約で固定**)、kube-vip VIP `.10`(DHCP プール外) |
-| site2 LAN CIDR | `192.168.20.0/24` | 同上 |
-| ノードの LAN IP 管理 | DHCP 予約 | inventory には書かない。管理は wg アドレス、k8s は実行時ファクトで LAN IP を取得(`/docs/admin/ansible` の予約表参照) |
-| WireGuard CIDR | `10.100.0.0/24` | site1 は `.11`–`.13`、site2 は `.21`–`.23`。LAN / Pod / Service と重複しないこと |
+| 拠点構成 | 2拠点 × 2台、拠点ごとに独立クラスタ | node1 = control-plane(stacked etcd・schedulable)、node2 = worker。API VIP は kube-vip(固定アドレス目的、HA ではない) |
+| ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が `cluster_lan_cidr` の固定アドレスを LAN NIC に追加する |
+| クラスタ用サブネット(`cluster_lan_cidr`) | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | node1 `.11`、node2 `.12`(inventory の `lan_address`)、VIP `.10`。kubelet node-ip / kubeadm / Cilium VXLAN はこれ。実際の LAN と被ったら変更 |
+| kube-vip VIP | site1 `10.200.1.10` / site2 `10.200.2.10` | cilium values の `k8sServiceHost` と一致。wg から届かないため管理者の kubectl は node1 の wg アドレス |
+| WireGuard CIDR | `10.100.0.0/24` | site1 は `.11`–`.12`、site2 は `.21`–`.22`(inventory の `wg_address`)。cluster_lan / Pod / Service と重複しないこと |
 | WireGuard ポート | `51820` | ハブの ListenPort |
-| WireGuard MTU | `1420` | 1500 − 80(オーバーヘッド + 余裕) |
+| WireGuard MTU | `1420` | 1500 − 80(オーバーヘッド + 余裕)。クラスタ内通信は LAN 直通なので Cilium の MTU は `1500`(Pod は `1450`) |
 | Pod CIDR | `10.244.0.0/16` | **両拠点で同一値**(`/docs/architecture/multi-site` 参照) |
 | Service CIDR | `10.96.0.0/12` | 同上 |
 | kube-api ポート | `6443` | |
-| 外部公開ポート | Minecraft `25565`、HTTP/HTTPS `80`/`443` | Linode 側 DNAT(現状すべて site1 向け)。SSH は公開せず wg 経由のみ |
+| 外部公開ポート | Minecraft `25565`、HTTP/HTTPS `80`/`443` | `25565` は HAProxy(`tcp_routes`)、`80`/`443` は Caddy(`proxy_routes`)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使用。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
-## DNAT ルール(`ansible/group_vars/all/network.yml` の `dnat_rules`)
+## HAProxy の TCP ルート(`ansible/group_vars/all/network.yml` の `tcp_routes`)
 
-| name | proto | dport | target | tport | 備考 |
+| name | port | site | node_port | allowed_sources | 備考 |
 |---|---|---|---|---|---|
-| minecraft | tcp | `25565` | `10.100.0.11` | `30565` | site1-node1 の NodePort(eTP Local) |
-| http | tcp | `80` | `10.100.0.11` | `80` | site1 Cilium Gateway(hostNetwork) |
-| https | tcp | `443` | `10.100.0.11` | `443` | 同上 |
+| minecraft | `25565` | site1 | `30565` | `[]`(全公開) | site1 の両ノードの NodePort へ転送。前段の Velocity の IP を `allowed_sources` に入れること |
 
-`target` / `tport` の対応関係、および `terraform` の `public_tcp_ports`
-との一致は `make check-consistency` が検査する。
+L4 なのでクライアント実IPは届かない(Minecraft は Velocity の modern
+forwarding でプレイヤー IP を渡す)。`terraform` の `public_tcp_ports` =
+`tcp_routes` の port + `proxy_public_ports` であること、`node_port` が
+Minecraft Service の nodePort と一致することは `make check-consistency` が検査する。
+
+## Caddy の公開ルート(`ansible/group_vars/all/network.yml` の `proxy_routes`)
+
+| 変数 | 値 | 備考 |
+|---|---|---|
+| `proxy_public_ports` | `[80, 443]` | Caddy が listen するポート(ACME HTTP-01 にも 80 が必要) |
+| `proxy_acme_email` | `yahiro@morino.party` | Let's Encrypt の連絡先 |
+| `proxy_routes` | `[]`(未登録) | `{ host, site }` のリスト。upstream は `site` の全ノード wg アドレス `:80` を inventory から自動導出 |
+
+ホスト名を追加する手順は `/docs/architecture/multi-site` の
+「公開サービスと拠点の対応」を参照。
 
 ## コンポーネントのバージョン(`ansible/group_vars/all/versions.yml`)
 
@@ -46,7 +57,7 @@ description: CIDR・VIP・DNATルール・各コンポーネントのバージ�
 |---|---|---|
 | Kubernetes | `1.35`(`v1.35.8`) | pkgs.k8s.io のマイナーリポジトリ。パッチはリポジトリ内最新を導入して apt hold |
 | Cilium | `1.19.7` | 1.19系の最新パッチ(1.20はリリース直後のため見送り) |
-| kube-vip | `v1.2.3` | |
+| kube-vip | `v1.2.3` | ARP mode、VIP は `cluster_lan_cidr` 内 |
 | Gateway API | `v1.4.1` | Cilium 1.19 がサポートするバージョン |
 | Helm | `v3.21.4` | |
 | pause イメージ | `registry.k8s.io/pause:3.10` | kubeadm が期待するバージョン。`kubeadm config images list` で要確認 |
@@ -56,7 +67,7 @@ description: CIDR・VIP・DNATルール・各コンポーネントのバージ�
 | 項目 | site1 | site2 |
 |---|---|---|
 | `site_name` | `site1` | `site2` |
-| `lan_cidr` | `192.168.10.0/24` | `192.168.20.0/24` |
-| `kube_vip_address` | `192.168.10.10` | `192.168.20.10` |
+| `cluster_lan_cidr` | `10.200.1.0/24` | `10.200.2.0/24` |
+| `kube_vip_address` | `10.200.1.10` | `10.200.2.10` |
 | `k8s_cp_group` | `site1_control_plane` | `site2_control_plane` |
 | `cilium_site_values_relpath` | `kubernetes/sites/site1/infrastructure/cilium/values.yaml` | `kubernetes/sites/site2/infrastructure/cilium/values.yaml` |

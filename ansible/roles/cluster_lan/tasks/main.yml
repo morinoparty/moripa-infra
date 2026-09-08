@@ -1,0 +1,75 @@
+# クラスタ用の第 2 サブネット(cluster_lan_cidr)のアドレスを LAN NIC に追加する。
+# DHCP のアドレスはそのまま残し、ルーターには一切触れない。
+# 設計: docs/content/docs/architecture/wireguard.mdx(クラスタ通信の節)
+
+- name: LAN NIC を検出
+  ansible.builtin.import_tasks: detect.yml
+
+# 同一拠点のもう 1 台(疎通検証の相手)。--limit で 1 台ずつ流すときは相手が
+# まだ第 2 サブネットを持たないので、play に含まれる場合だけ検証する
+- name: 同一拠点の相手ノードを特定
+  ansible.builtin.set_fact:
+    cluster_lan_peer: "{{ groups[site_name] | difference([inventory_hostname]) | first }}"
+
+- name: lan_address が定義されていることを確認(CIDR 内かは make check-consistency が検査)
+  ansible.builtin.assert:
+    that:
+      - lan_address is defined
+      - lan_address != kube_vip_address
+    fail_msg: "{{ inventory_hostname }} の lan_address が inventory に無い、または VIP と重複"
+
+# netplan apply が systemd-networkd を再設定しても wg-quick の policy routing
+# (fwmark / suppress_prefixlength ルール)を消させない。消えると管理経路が切れる
+- name: systemd-networkd の drop-in ディレクトリを作成
+  ansible.builtin.file:
+    path: /etc/systemd/networkd.conf.d
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: systemd-networkd が wg-quick のルールと経路に触らないようにする
+  ansible.builtin.copy:
+    dest: /etc/systemd/networkd.conf.d/90-keep-wireguard.conf
+    content: |
+      [Network]
+      ManageForeignRoutingPolicyRules=no
+      ManageForeignRoutes=no
+    mode: "0644"
+  become: true
+
+- name: netplan に第 2 サブネットのアドレスを追加
+  ansible.builtin.template:
+    src: 60-cluster-lan.yaml.j2
+    dest: /etc/netplan/60-cluster-lan.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Apply netplan
+
+- name: handler を先に反映
+  ansible.builtin.meta: flush_handlers
+
+- name: アドレスが LAN NIC に付いていることを確認
+  ansible.builtin.command: ip -4 -o addr show dev {{ cluster_lan_interface }}
+  register: cluster_lan_addr
+  changed_when: false
+  failed_when: (lan_address + '/') not in cluster_lan_addr.stdout
+
+- name: hub へ ping(netplan apply 後も wg が生きていること)
+  ansible.builtin.command: ping -c 2 -W 3 {{ wg_hub_address }}
+  changed_when: false
+  become: true
+
+- name: 同一拠点の他ノードへ LAN 直通で到達できることを確認
+  ansible.builtin.command: ping -c 2 -W 3 {{ hostvars[cluster_lan_peer].lan_address }}
+  changed_when: false
+  become: true
+  when: cluster_lan_peer in ansible_play_hosts
+
+- name: 他ノードへの経路が wg0 でないことを確認(クラスタ通信は LAN 直通)
+  ansible.builtin.command: ip route get {{ hostvars[cluster_lan_peer].lan_address }}
+  register: cluster_lan_route_check
+  changed_when: false
+  failed_when: "'dev ' + wg_interface in cluster_lan_route_check.stdout"
+  when: cluster_lan_peer in ansible_play_hosts

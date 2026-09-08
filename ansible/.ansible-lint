@@ -3,3 +3,8 @@ profile: moderate
 skip_list:
   # タスク名は日本語+ツール名(sshd 等の小文字始まり)で書くため除外
   - name[casing]
+
+# sops で暗号化した変数ファイルは暗号文で行が長いため yaml ルールの対象外にする
+# (復号自体は community.sops の vars plugin が行う。CI では SOPS_AGE_KEY を渡す)
+exclude_paths:
+  - "**/*.sops.yml"  # inventory/host_vars(symlink)経由でも検出されるため再帰パターン

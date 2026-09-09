@@ -102,7 +102,7 @@ MTU        = {net["wg_mtu"]}
 
 [Peer]  # linode-gw (hub)
 PublicKey           = {gw_pub}
-Endpoint            = {net["gateway_public_ip"]}:{net["wg_port"]}
+Endpoint            = {net.get("gateway_fqdn") or net["gateway_public_ip"]}:{net["wg_port"]}
 AllowedIPs          = 0.0.0.0/0
 PersistentKeepalive = 25
 WGEOF

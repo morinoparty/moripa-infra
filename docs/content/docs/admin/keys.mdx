@@ -81,10 +81,15 @@ MTU        = 1360
 PostUp     = resolvectl dns %i 10.100.0.1; resolvectl domain %i ~wg.morino.party
 [Peer]
 PublicKey           = <linode-gw の公開鍵>
-Endpoint            = <linode public ip>:51820
+Endpoint            = <gateway_fqdn または linode public ip>:51820
 AllowedIPs          = 10.100.0.0/24
 PersistentKeepalive = 25
 ```
+
+Endpoint は FQDN でもよい。Cloudflare に `gw.morino.party` の A レコード
+(**DNS only / 灰色雲**。プロキシを通すと UDP 51820 が届かない)を作り、
+`network.yml` の `gateway_fqdn` に設定する。内部ゾーン `wg.morino.party`
+(ハブの dnsmasq)とは別名にすること。
 
 Windows は標準の「VPN 接続を追加」では繋げない(WireGuard 非対応)ため、
 WireGuard for Windows で「空のトンネルを追加」し、生成された公開鍵を

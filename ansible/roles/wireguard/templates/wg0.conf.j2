@@ -37,7 +37,7 @@ PostDown = ip rule del to {{ cidr }} lookup main priority 100
 
 [Peer]  # linode-gw (hub)
 PublicKey           = {{ hostvars['linode-gw'].wg_public_key }}
-Endpoint            = {{ gateway_public_ip }}:{{ wg_port }}
+Endpoint            = {{ gateway_fqdn | default('', true) or gateway_public_ip }}:{{ wg_port }}
 AllowedIPs          = 0.0.0.0/0
 PersistentKeepalive = 25
 {% endif %}

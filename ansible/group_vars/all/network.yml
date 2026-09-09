@@ -7,6 +7,9 @@
 
 # terraform output -raw public_ip から転記(make tf-output)
 gateway_public_ip: "139.162.104.78"
+# WireGuard の Endpoint に使う公開 FQDN(Cloudflare に A レコード、DNS only / 灰色雲)。
+# 空なら gateway_public_ip を使う。設定後は node-bootstrap の再生成と管理機の conf 更新が要る
+gateway_fqdn: gw.morino.party
 
 wg_cidr: 10.100.0.0/24
 wg_hub_address: 10.100.0.1

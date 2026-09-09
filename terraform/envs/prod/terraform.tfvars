@@ -6,4 +6,4 @@ admin_ssh_keys = [
 
 # 初回ブートストラップ時に管理者の現IPを入れる(例: "203.0.113.5/32")。
 # wg 確立後は [] に戻して再 apply し、公開 SSH を閉じる
-bootstrap_ssh_cidrs = ["115.65.234.84/32"] # 初回のみ。make gateway 後に [] へ戻して再 apply
+bootstrap_ssh_cidrs = [] # 定常。wg 経由の SSH を確認済みなので公開 22 は閉じる

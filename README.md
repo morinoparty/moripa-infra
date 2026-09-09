@@ -145,4 +145,4 @@ split-tunnel でも壊れない(ノードの外向き IP が自宅回線にな�
 - [ ] 実機適用(管理者向けドキュメント(docs/content/docs/admin/) の手順に従う)
 - [ ] etcd の定期バックアップ(control-plane が 1台のため必須。未実装)
 - [x] 公開ホスト名の DNS(`*.site<N>.dev` / `*.site<N>.private.dev` / `auth.dev`)を Linode に向け、Caddy をワイルドカード + DNS-01 で構成
-- [ ] oauth2-proxy の GitHub OAuth App / MineAuth クライアントを登録し `oauth2_proxy_enabled: true`
+- [x] oauth2-proxy の GitHub OAuth App / MineAuth クライアントを登録し `oauth2_proxy_enabled: true`

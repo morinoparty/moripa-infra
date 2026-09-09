@@ -82,7 +82,7 @@ caddy_gitops_interval: 3min
 #   mineauth: MineAuth(OIDC)で roles クレームに "staff" を持つ
 # クライアント ID/secret・cookie secret は group_vars/gateway/auth.sops.yml。
 # 値を入れて oauth2_proxy_enabled: true にするまで private ホストは 503 を返す(fail closed)
-oauth2_proxy_enabled: false
+oauth2_proxy_enabled: true
 auth_host: auth.dev.morino.party
 # cookie を共有するドメイン(private ホストと auth_host の共通の親)
 auth_cookie_domain: .dev.morino.party
@@ -95,7 +95,7 @@ oauth2_proxy_providers:
   mineauth:
     port: 4181
     # MineAuth の OIDC issuer(/.well-known/openid-configuration を持つ URL)
-    issuer_url: "REPLACE_WITH_MINEAUTH_ISSUER_URL"
+    issuer_url: "https://api.morino.party/main"
     scope: "openid profile email roles"
     groups_claim: roles
     allowed_groups: [staff]

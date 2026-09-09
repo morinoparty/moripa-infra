@@ -12,3 +12,9 @@ kube_vip_interface: "{{ cluster_lan_interface }}"
 # 管理経路は WireGuard(ansible_host = wg アドレス)。クラスタ通信は
 # cluster_lan_cidr の lan_address(LAN 直通)。DHCP で貰う LAN IP は使わない。
 # 前提: 各ノードで node-bootstrap 済み(wg が張られていないと到達不能)
+
+# 初回接続の認証: 現地で OS を入れた直後のノードは SSH 鍵も sudo NOPASSWD も
+# 無いため、同ディレクトリの bootstrap.sops.yml(sops 暗号化)に
+# ansible_password / ansible_become_password(現地作業者に渡した moripa の
+# パスワード)を置く。base ロールが鍵と NOPASSWD を配った後も残して害はない。
+# 管理機には sshpass が必要(docs/content/docs/admin/ansible.mdx)

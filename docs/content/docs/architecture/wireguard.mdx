@@ -84,7 +84,9 @@ InternalIP・Cilium の VXLAN 端点に焼き込むため、DHCP で変わり得
 
 ## MTU
 
-- `wg0` は **MTU 1420**(1500 − 80: WireGuard オーバーヘッド + 余裕)
+- `wg0` は **MTU 1360**。自宅回線が IPv4 over IPv6(MAP-E 等)や PPPoE で経路 MTU が
+  1454〜1472 しかなく(管理機で実測 ≈1472)、1420 では ssh の鍵交換などが詰まる。
+  ハブ・ノード・管理機のすべてで同じ値を使う(`wg_mtu`)
 - クラスタ内(Cilium)の通信はトンネルを通らないため MTU は **1500**
   (`kubernetes/common/cilium/values.yaml` で明示し、wg0 の 1420 を誤検出させない)。
   Pod の MTU は VXLAN の 50 を引いて **1450**
@@ -129,7 +131,7 @@ table inet filter {
   }
   chain forward {
     type filter hook forward priority filter; policy drop;
-    tcp flags syn tcp option maxseg size set rt mtu   # wg(MTU 1420)向け MSS clamp
+    tcp flags syn tcp option maxseg size set rt mtu   # wg(MTU 1360)向け MSS clamp
     ct state established,related accept
     iifname "wg0" oifname "eth0" accept   # spoke → internet(egress)
     iifname "wg0" oifname "wg0" accept    # 管理者 → ノード

@@ -1,0 +1,4 @@
+# 現地作業者に渡した moripa ユーザーのパスワード(OS インストール時に設定)。
+# 実値を入れたら `sops -e -i ansible/group_vars/k8s_cluster/bootstrap.sops.yml` で暗号化すること
+ansible_password: REPLACE_WITH_NODE_PASSWORD
+ansible_become_password: REPLACE_WITH_NODE_PASSWORD

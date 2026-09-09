@@ -10,7 +10,8 @@ WireGuard とクラスタの構成は `make gateway`(Linode)と `make cluster`
 ## make gateway: ゲートウェイ構成
 
 ```sh
-make gateway
+make gateway ANSIBLE_ARGS='-e ansible_host=<gateway_public_ip>'   # 初回(wg 確立前)は公開 IP 経由
+make gateway                                                      # 以降は wg 経由(inventory の ansible_host = 10.100.0.1)
 ```
 
 Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrades)、
@@ -26,6 +27,15 @@ Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrade
 - `systemctl status caddy` が active。`proxy_routes` が空のうちは Caddy は
   どのポートも listen しない(`curl http://<linode_ip>` は接続拒否になる)
 - `systemctl status haproxy` が active。ノード未構築のうちは backend が全 DOWN で正常
+
+## make cluster の前に: 初回接続はパスワード認証
+
+現地で OS を入れた直後のノードには SSH 鍵も sudo の NOPASSWD も無いため、
+初回の `make cluster` は現地作業者に渡した `moripa` のパスワードで接続する。
+`ansible/group_vars/k8s_cluster/bootstrap.sops.yml`(example をコピーして
+`sops -e -i`)に `ansible_password` / `ansible_become_password` を置くと
+Ansible が自動で使う。管理機には `sshpass` が必要。`base` ロールが鍵と
+NOPASSWD を配った後はパスワードは使われないが、ファイルは残してよい。
 
 ## make cluster の前に: ルーター側の設定は不要
 

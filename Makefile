@@ -32,14 +32,17 @@ tf-output: ## gateway_public_ip を表示(ansible/group_vars/all/network.yml へ
 # ---- Ansible ----------------------------------------------------------------
 
 .PHONY: gateway cluster site
+# 追加引数は ANSIBLE_ARGS で渡す(例: 初回の gateway は公開 IP 経由、cluster の 1 台ずつ実行)
+#   make gateway ANSIBLE_ARGS='-e ansible_host=203.0.113.10'
+#   make cluster ANSIBLE_ARGS='--limit site1-node1'
 gateway: ## Linode ゲートウェイを構成
-	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/gateway.yml
+	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/gateway.yml $(ANSIBLE_ARGS)
 
 cluster: ## 4台のノードを構成(wg → k8s)
-	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/cluster.yml
+	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/cluster.yml $(ANSIBLE_ARGS)
 
 site: ## 全体を構成
-	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/site.yml
+	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/site.yml $(ANSIBLE_ARGS)
 
 # ---- WireGuard 鍵管理 -------------------------------------------------------
 

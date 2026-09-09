@@ -11,6 +11,10 @@
 
 注意:
 - 生成物には wg 秘密鍵が平文で入る。安全な経路で渡し、実行後は削除させること
+- 渡し方: 推測不能な URL に置いて、現地では
+    curl -fsSL <URL> | sudo bash
+  で実行させる(標準入力から読むので途中で切れても set -e で止まる。
+  ファイルに落とさないので消し忘れも無い)。URL は実行後すぐ無効化すること
 - wg0.conf の内容は ansible/roles/wireguard/templates/wg0.conf.j2 (spoke) と
   同等にしてある。初回の `make cluster` で Ansible が同じ内容で上書きするため、
   多少の乖離があっても一時的
@@ -80,6 +84,8 @@ def main() -> None:
 #   sudo bash このファイル && rm このファイル
 set -euo pipefail
 [ "$(id -u)" = 0 ] || {{ echo "sudo で実行してください"; exit 1; }}
+# 取り違え防止: OS インストール時に付けたホスト名と一致しなければ実行しない
+[ "$(hostname)" = "{host}" ] || {{ echo "NG: これは {host} 用のスクリプトです(このマシンは $(hostname))。管理者に連絡してください。"; exit 1; }}
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q

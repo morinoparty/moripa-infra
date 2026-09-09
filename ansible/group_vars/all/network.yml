@@ -11,7 +11,10 @@ gateway_public_ip: "139.162.104.78"
 wg_cidr: 10.100.0.0/24
 wg_hub_address: 10.100.0.1
 wg_port: 51820
-wg_mtu: 1420
+# 自宅回線は IPv4 over IPv6(MAP-E 等)や PPPoE で経路 MTU が 1454〜1472 しかない
+# (管理機で実測: 外側 ≈1472 → wg 内側の上限 1392)。余裕を見て 1360 に固定する。
+# 1420 のままだと ssh の鍵交換など大きいパケットが詰まる
+wg_mtu: 1360
 
 # Linode 側 WAN NIC(Linode の Ubuntu イメージは eth0)
 gateway_wan_interface: eth0
@@ -19,8 +22,9 @@ gateway_wan_interface: eth0
 # inventory 外の WireGuard peer(管理者マシン等)。
 # SSH は wg 経由のみの運用なので、管理者マシンを必ずここに登録する
 wg_extra_peers:
-  - { name: admin, public_key: "SkO8raeJ3sYVa3zz3N8zlacUpQFPUrPd08fLWD1geVk=", allowed_ips: 10.100.0.100/32 }  # 管理者マシン(秘密鍵は ~/keys/wg-admin.key)
-  - { name: admin-windows, public_key: "nJfl9ocIyh6yC3PLkShe7Nyd+9bAe/pPWcnZ1MG7ygU=", allowed_ips: 10.100.0.101/32 }  # 管理者の Windows 機(WireGuard for Windows)
+  # name は <name>.wg.morino.party の DNS 名にもなる(ハイフンのみ、アンダースコア不可)
+  - { name: nikomaru-minipc-01, public_key: "SkO8raeJ3sYVa3zz3N8zlacUpQFPUrPd08fLWD1geVk=", allowed_ips: 10.100.0.100/32 }  # Linux 管理機(Ansible 実行元)
+  - { name: nikomaru-gamepc-01, public_key: "nJfl9ocIyh6yC3PLkShe7Nyd+9bAe/pPWcnZ1MG7ygU=", allowed_ips: 10.100.0.101/32 }  # Windows 機(WireGuard for Windows)
 
 # Pod / Service CIDR は両拠点で同一値を使う。クラスタ同士は接続しないため
 # 重複しても問題ない(将来 cluster mesh 等で接続するなら再IP設計が必要 →

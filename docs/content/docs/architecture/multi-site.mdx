@@ -78,9 +78,14 @@ flowchart TD
 
 ## 既存拠点のクラスタにノードを足す場合
 
-worker を足すなら inventory の `site<N>_workers`(現状 node2 のみ)に
-ホストを追加(`wg_address` と `lan_address` を採番)して wg 鍵を生成し、
-`make cluster` を再実行するだけでよい
+予備マシン(`site<N>_spare`、現状 node3 / node4)は wg 鍵・ハブのピア・DNS・
+bootstrap スクリプトだけ先に用意してあり、クラスタと Caddy / HAProxy の転送先
+には入らない。投入するときは inventory の行を `site<N>_spare` から
+`site<N>_workers` へ移して `make gateway`(転送先の更新)と `make cluster` を
+実行する。予備に無い新規マシンを足すなら、inventory に追加(`wg_address` と
+`lan_address` を採番)して `make wg-keygen HOST=...` → `make gateway` →
+`make node-bootstrap HOST=...` → 現地で実行 → `make cluster`。
+`make cluster` は再実行するだけでよい
 (kubeadm の join は冪等なため、既存ノードへの再実行は無害)。Caddy の
 upstream は inventory から導出されるため自動で追加される。
 

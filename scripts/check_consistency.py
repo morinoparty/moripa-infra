@@ -46,6 +46,8 @@ def inventory_hosts() -> dict:
         for name, sub in (node.get("children") or {}).items():
             walk(sub or {}, name if name in SITES else site, name)
         for name, hv in (node.get("hosts") or {}).items():
+            if name in hosts and site is None:
+                continue  # 別の親(spare 等)経由で再登場しても site を消さない
             hosts[name] = {
                 "wg_address": (hv or {}).get("wg_address"),
                 "lan_address": (hv or {}).get("lan_address"),

@@ -27,7 +27,7 @@ defaults
 listen {{ r.name }}
     bind *:{{ r.port }}
     balance leastconn
-{% for h in groups[r.site] | sort %}
+{% for h in groups[r.site] | intersect(groups['k8s_cluster']) | sort %}
     server {{ h }} {{ hostvars[h].wg_address }}:{{ r.node_port }} check inter 5s fall 2 rise 2
 {% endfor %}
 

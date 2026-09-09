@@ -11,7 +11,7 @@
 
 {% for r in proxy_routes %}
 {{ r.host }} {
-	reverse_proxy {% for h in groups[r.site] | sort %}{{ hostvars[h].wg_address }}:80{{ ' ' if not loop.last }}{% endfor %} {
+	reverse_proxy {% for h in groups[r.site] | intersect(groups['k8s_cluster']) | sort %}{{ hostvars[h].wg_address }}:80{{ ' ' if not loop.last }}{% endfor %} {
 		lb_policy round_robin
 		lb_try_duration 5s
 		fail_duration 30s

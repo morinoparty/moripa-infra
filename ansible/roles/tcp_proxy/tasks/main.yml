@@ -7,7 +7,7 @@
   ansible.builtin.assert:
     that:
       - item.site in groups
-      - groups[item.site] | length > 0
+      - groups[item.site] | intersect(groups['k8s_cluster']) | length > 0
     fail_msg: "tcp_routes[{{ item.name }}].site={{ item.site }} が inventory のグループに無い"
   loop: "{{ tcp_routes }}"
   loop_control:

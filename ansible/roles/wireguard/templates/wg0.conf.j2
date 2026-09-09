@@ -7,7 +7,7 @@ ListenPort = {{ wg_port }}
 PrivateKey = {{ wg_private_key }}
 MTU        = {{ wg_mtu }}
 
-{% for h in groups['k8s_cluster'] | sort %}
+{% for h in (groups['k8s_cluster'] + (groups['spare'] | default([]))) | sort %}
 [Peer]  # {{ h }}
 PublicKey  = {{ hostvars[h].wg_public_key }}
 AllowedIPs = {{ hostvars[h].wg_address }}/32

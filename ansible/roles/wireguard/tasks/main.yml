@@ -11,7 +11,7 @@
       - hostvars[item].wg_public_key is defined
       - hostvars[item].wg_public_key != "REPLACE_WITH_REAL_PUBKEY"
     fail_msg: "make wg-keygen HOST={{ item }} で鍵を生成すること"
-  loop: "{{ groups['k8s_cluster'] }}"
+  loop: "{{ groups['k8s_cluster'] + (groups['spare'] | default([])) }}"
   when: wg_role == "hub"
 
 - name: spoke は hub の公開鍵が実鍵であることを確認

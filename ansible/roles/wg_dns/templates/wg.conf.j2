@@ -22,7 +22,7 @@ cache-size=1000
 
 # --- ホスト ---
 host-record={{ wg_dns_gateway_alias }}.{{ wg_dns_domain }},linode-gw.{{ wg_dns_domain }},{{ wg_hub_address }}
-{% for h in groups['k8s_cluster'] | sort %}
+{% for h in (groups['k8s_cluster'] + (groups['spare'] | default([]))) | sort %}
 host-record={{ h }}.{{ wg_dns_domain }},{{ hostvars[h].wg_address }}
 {% endfor %}
 {% for peer in wg_extra_peers %}

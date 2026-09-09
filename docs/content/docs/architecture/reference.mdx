@@ -20,7 +20,7 @@ description: CIDR・VIP・Caddy / HAProxy の公開ルート・各コンポー�
 | ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が `cluster_lan_cidr` の固定アドレスを LAN NIC に追加する |
 | クラスタ用サブネット(`cluster_lan_cidr`) | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | node1 `.11`、node2 `.12`(inventory の `lan_address`)、VIP `.10`。kubelet node-ip / kubeadm / Cilium VXLAN はこれ。実際の LAN と被ったら変更 |
 | kube-vip VIP | site1 `10.200.1.10` / site2 `10.200.2.10` | cilium values の `k8sServiceHost` と一致。wg から届かないため管理者の kubectl は node1 の wg アドレス |
-| WireGuard CIDR | `10.100.0.0/24` | site1 は `.11`–`.12`、site2 は `.21`–`.22`(inventory の `wg_address`)。cluster_lan / Pod / Service と重複しないこと |
+| WireGuard CIDR | `10.100.0.0/24` | site1 は `.11`–`.14`、site2 は `.21`–`.24`(inventory の `wg_address`。`.13` `.14` 系は予備)。cluster_lan / Pod / Service と重複しないこと |
 | WireGuard ポート | `51820` | ハブの ListenPort |
 | WireGuard MTU | `1360` | 自宅回線(MAP-E / PPPoE)の経路 MTU が 1454〜1472 しかないため。1420 だと ssh の鍵交換が詰まる。クラスタ内通信は LAN 直通なので Cilium の MTU は `1500`(Pod は `1450`) |
 | Pod CIDR | `10.244.0.0/16` | **両拠点で同一値**(`/docs/architecture/multi-site` 参照) |

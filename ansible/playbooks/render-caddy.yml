@@ -1,0 +1,23 @@
+# CI / ローカル検証用: Ansible が生成する generated.caddy を手元にレンダリングし、
+# git の gateway/caddy/Caddyfile と合わせて `caddy validate` に掛ける(make lint-caddy)。
+# ハブには接続しない(connection: local、facts 不要)。
+#   ansible-playbook playbooks/render-caddy.yml -e caddy_render_dir=/path/to/dir
+- name: generated.caddy をレンダリング(検証用)
+  hosts: gateway
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    caddy_render_dir: "{{ playbook_dir }}/../../.caddy-render"
+  tasks:
+    - name: 出力先を作成
+      ansible.builtin.file:
+        path: "{{ caddy_render_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: generated.caddy を出力
+      ansible.builtin.template:
+        src: ../roles/reverse_proxy/templates/generated.caddy.j2
+        dest: "{{ caddy_render_dir }}/generated.caddy"
+        mode: "0644"

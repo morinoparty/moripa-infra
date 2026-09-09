@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Pull gateway/caddy from git, validate and reload Caddy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/caddy-gitops

@@ -55,16 +55,34 @@ Minecraft Service の nodePort と一致することは `make check-consistency`
 クラスタ用の `10.200.x.x` は wg から届かないため登録しない。クライアント側の
 設定は `/docs/admin/keys` を参照。
 
-## Caddy の公開ルート(`ansible/group_vars/all/network.yml` の `proxy_routes`)
+## Caddy の公開ルート(`gateway/caddy/Caddyfile`)
 
-| 変数 | 値 | 備考 |
+ルーティング表は Ansible 変数ではなく git の `gateway/caddy/Caddyfile`。ハブの
+`caddy-gitops.timer` が `main` を取り込み、`caddy validate` を通してから reload する。
+
+| ホスト名 | 転送先 | 認証 |
 |---|---|---|
-| `proxy_public_ports` | `[80, 443]` | Caddy が listen するポート(ACME HTTP-01 にも 80 が必要) |
-| `proxy_acme_email` | `yahiro@morino.party` | Let's Encrypt の連絡先 |
-| `proxy_routes` | `[]`(未登録) | `{ host, site }` のリスト。upstream は `site` の全ノード wg アドレス `:80` を inventory から自動導出 |
+| `*.site1.dev.morino.party` | site1 の全ノード `:80` | なし |
+| `*.site2.dev.morino.party` | site2 の全ノード `:80` | なし |
+| `*.site1.private.dev.morino.party` | site1 の全ノード `:80` | oauth2-proxy |
+| `*.site2.private.dev.morino.party` | site2 の全ノード `:80` | oauth2-proxy |
+| `auth.dev.morino.party` | oauth2-proxy(ログイン選択画面 + コールバック) | — |
 
-ホスト名を追加する手順は `/docs/architecture/multi-site` の
-「公開サービスと拠点の対応」を参照。
+証明書は Cloudflare DNS-01 のワイルドカード(階層ごとに 1 枚)。上記の各名前は
+Cloudflare で `gateway_public_ip` に向ける(DNS only)。
+
+| 変数(`network.yml`) | 値 | 備考 |
+|---|---|---|
+| `proxy_public_ports` | `[80, 443]` | Caddy が listen するポート |
+| `caddy_gitops_repo_url` / `_branch` / `_subdir` / `_interval` | 本リポジトリ `main` の `gateway/caddy`、3 分 | ハブの取り込み設定 |
+| `oauth2_proxy_enabled` | `false` | `true` にするまで `*.private.*` は 503(fail closed) |
+| `auth_host` | `auth.dev.morino.party` | oauth2-proxy のコールバック先 |
+| `auth_cookie_domain` | `.dev.morino.party` | セッション cookie の共有範囲 |
+| `oauth2_proxy_providers.github` | port 4180、org `morinoparty` | GitHub org メンバーを許可 |
+| `oauth2_proxy_providers.mineauth` | port 4181、`roles` に `staff` | MineAuth(OIDC)。`issuer_url` は要設定 |
+
+秘密(Cloudflare トークン、client id/secret、cookie secret)は
+`ansible/group_vars/gateway/auth.sops.yml`。設定手順は `/docs/admin/auth`。
 
 ## コンポーネントのバージョン(`ansible/group_vars/all/versions.yml`)
 
@@ -73,6 +91,8 @@ Minecraft Service の nodePort と一致することは `make check-consistency`
 | Kubernetes | `1.35`(`v1.35.8`) | pkgs.k8s.io のマイナーリポジトリ。パッチはリポジトリ内最新を導入して apt hold |
 | Cilium | `1.19.7` | 1.19系の最新パッチ(1.20はリリース直後のため見送り) |
 | kube-vip | `v1.2.3` | ARP mode、VIP は `cluster_lan_cidr` 内 |
+| Caddy | `v2.11.4` + caddy-dns/cloudflare `v0.2.4` | 公式ビルド API から取得し apt 版を dpkg-divert で差し替え |
+| oauth2-proxy | `v7.15.4` | GitHub Releases(sha256 検証) |
 | Gateway API | `v1.4.1` | Cilium 1.19 がサポートするバージョン |
 | Helm | `v3.21.4` | |
 | pause イメージ | `registry.k8s.io/pause:3.10` | kubeadm が期待するバージョン。`kubeadm config images list` で要確認 |

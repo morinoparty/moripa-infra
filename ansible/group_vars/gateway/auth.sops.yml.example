@@ -1,0 +1,18 @@
+# Linode(ハブ)だけが使う秘密。実値を入れたら
+#   sops -e -i ansible/group_vars/gateway/auth.sops.yml
+# で暗号化すること(既存ファイルの編集は sops ansible/group_vars/gateway/auth.sops.yml)。
+#
+# Cloudflare API トークン(Caddy の DNS-01 用。権限: Zone / DNS / Edit、対象 morino.party のみ)
+cloudflare_dns_api_token: REPLACE_WITH_CLOUDFLARE_DNS_TOKEN
+# GitHub OAuth App(https://github.com/organizations/morinoparty/settings/applications)
+#   Authorization callback URL: https://auth.dev.morino.party/oauth2/github/callback
+oauth2_proxy_github_client_id: REPLACE_WITH_GITHUB_CLIENT_ID
+oauth2_proxy_github_client_secret: REPLACE_WITH_GITHUB_CLIENT_SECRET
+# MineAuth(OIDC)のクライアント
+#   Redirect URI: https://auth.dev.morino.party/oauth2/mineauth/callback
+oauth2_proxy_mineauth_client_id: REPLACE_WITH_MINEAUTH_CLIENT_ID
+oauth2_proxy_mineauth_client_secret: REPLACE_WITH_MINEAUTH_CLIENT_SECRET
+# cookie secret(プロセスごとに別。32 byte を base64url で:
+#   python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+oauth2_proxy_github_cookie_secret: REPLACE_WITH_32BYTE_BASE64
+oauth2_proxy_mineauth_cookie_secret: REPLACE_WITH_32BYTE_BASE64

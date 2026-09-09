@@ -16,3 +16,12 @@ helm_version: "v3.21.4"
 
 # kubeadm が期待する pause イメージ(`kubeadm config images list` で要確認)
 pause_image: registry.k8s.io/pause:3.10
+
+# Linode 上の Caddy。公式ビルド API(caddyserver.com/api/download)で
+# caddy-dns/cloudflare を組み込んだバイナリを取得する
+caddy_version: "v2.11.4"
+caddy_cloudflare_module_version: "v0.2.4"
+
+# oauth2-proxy(GitHub Releases の linux-amd64 tarball と sha256)
+oauth2_proxy_version: "v7.15.4"
+oauth2_proxy_sha256: "4fbe902189aab713d9c0519b90a645032d4636ecb523dc36f5cc312d8ebef1e2"

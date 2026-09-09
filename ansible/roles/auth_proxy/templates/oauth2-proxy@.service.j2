@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+[Unit]
+Description=oauth2-proxy (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=oauth2-proxy
+Group=oauth2-proxy
+ExecStart=/usr/local/bin/oauth2-proxy --config /etc/oauth2-proxy/%i.cfg
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

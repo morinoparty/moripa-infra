@@ -1,16 +1,22 @@
-# Linode(ハブ)上の Caddy。HTTP/HTTPS を受けて TLS を終端し、proxy_routes の
-# ホスト名ごとに対象拠点のノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。
+# Linode(ハブ)上の Caddy。HTTP/HTTPS を受けて TLS を終端し、ホスト名ごとに対象拠点の
+# ノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。
 # 設計: docs/content/docs/architecture/wireguard.mdx(公開経路の節)
+#
+# 役割分担(/etc/caddy):
+#   Caddyfile        git の gateway/caddy/Caddyfile。caddy-gitops(timer)だけが書く。
+#                    Ansible は触らない(触ると次の pull で戻されて混乱する)
+#   generated.caddy  この role が inventory から生成する snippet(upstream / tls / auth)
+#   env              Cloudflare API トークン(sops → EnvironmentFile)
+#   www/             git の gateway/caddy/www(ログイン選択画面)。caddy-gitops が同期
+# apt の caddy には DNS モジュールが無いので、公式ビルド API から caddy-dns/cloudflare
+# 入りのバイナリを取り、dpkg-divert + update-alternatives で差し替える
+# (https://caddyserver.com/docs/build#package-support-files-for-custom-builds)
 
-- name: proxy_routes の site が inventory のグループであることを確認
+- name: 拠点グループに k8s ノードがあることを確認(to_site<N> snippet の upstream)
   ansible.builtin.assert:
-    that:
-      - item.site in groups
-      - groups[item.site] | intersect(groups['k8s_cluster']) | length > 0
-    fail_msg: "proxy_routes[{{ item.host }}].site={{ item.site }} が inventory のグループに無い"
-  loop: "{{ proxy_routes }}"
-  loop_control:
-    label: "{{ item.host }}"
+    that: groups[item] | intersect(groups['k8s_cluster']) | length > 0
+    fail_msg: "{{ item }} に k8s_cluster のノードが無い"
+  loop: [site1, site2]
 
 - name: Caddy の apt リポジトリを登録(deb822 + Signed-By)
   ansible.builtin.deb822_repository:
@@ -23,7 +29,7 @@
   become: true
   register: reverse_proxy_repo
 
-- name: Caddy を導入
+- name: Caddy を apt で導入(systemd unit・caddy ユーザー・ディレクトリ構成のため)
   ansible.builtin.apt:
     name: caddy
     state: present
@@ -31,20 +37,155 @@
     cache_valid_time: 3600
   become: true
 
-- name: Caddyfile を配布
+- name: gitops 用に git / rsync を導入
+  ansible.builtin.apt:
+    name: [git, rsync]
+    state: present
+  become: true
+
+- name: 現在のカスタムビルドのバージョンを確認
+  ansible.builtin.command: /usr/bin/caddy.custom version
+  register: reverse_proxy_custom_ver
+  changed_when: false
+  failed_when: false
+
+- name: Caddy カスタムビルド(caddy-dns/cloudflare 入り)を取得
+  when: reverse_proxy_custom_ver.rc != 0 or caddy_version not in reverse_proxy_custom_ver.stdout
+  become: true
+  block:
+    - name: 公式ビルド API からダウンロード(オンデマンドビルドのため時間がかかる)
+      ansible.builtin.get_url:
+        url: "https://caddyserver.com/api/download?os=linux&arch=amd64\
+              &p=github.com/caddy-dns/cloudflare@{{ caddy_cloudflare_module_version }}\
+              &version={{ caddy_version }}"
+        dest: /usr/bin/caddy.custom.new
+        mode: "0755"
+        owner: root
+        group: root
+        timeout: 600
+        force: true
+
+    - name: 取得したバイナリのバージョンとモジュールを検証
+      ansible.builtin.shell: |
+        set -e
+        /usr/bin/caddy.custom.new version | grep -F '{{ caddy_version }}'
+        /usr/bin/caddy.custom.new list-modules | grep -Fx dns.providers.cloudflare
+      changed_when: false
+
+    - name: バイナリを配置
+      ansible.builtin.command: mv -f /usr/bin/caddy.custom.new /usr/bin/caddy.custom
+      changed_when: true
+      notify: Restart caddy
+
+- name: apt 版の /usr/bin/caddy を退避(dpkg-divert)
+  ansible.builtin.command:
+    cmd: dpkg-divert --divert /usr/bin/caddy.default --rename /usr/bin/caddy
+    creates: /usr/bin/caddy.default
+  become: true
+
+- name: /usr/bin/caddy をカスタムビルドに向ける(update-alternatives)
+  community.general.alternatives:
+    name: caddy
+    link: /usr/bin/caddy
+    path: /usr/bin/caddy.custom
+    priority: 50
+  become: true
+  notify: Restart caddy
+
+- name: apt 版も alternatives に登録(戻せるように、低優先度)
+  community.general.alternatives:
+    name: caddy
+    link: /usr/bin/caddy
+    path: /usr/bin/caddy.default
+    priority: 10
+    state: present
+  become: true
+
+- name: Cloudflare API トークンを EnvironmentFile に配置
   ansible.builtin.template:
-    src: Caddyfile.j2
-    dest: /etc/caddy/Caddyfile
+    src: caddy-env.j2
+    dest: /etc/caddy/env
+    owner: root
+    group: caddy
+    mode: "0640"
+  become: true
+  notify: Restart caddy
+
+- name: caddy.service の drop-in ディレクトリ
+  ansible.builtin.file:
+    path: /etc/systemd/system/caddy.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: caddy.service に EnvironmentFile を追加(drop-in)
+  ansible.builtin.template:
+    src: caddy-override.conf.j2
+    dest: /etc/systemd/system/caddy.service.d/override.conf
     owner: root
     group: root
     mode: "0644"
-    validate: caddy validate --adapter caddyfile --config %s
+  become: true
+  notify: Restart caddy
+
+- name: 拠点別 upstream / tls / 認証の snippet を生成
+  ansible.builtin.template:
+    src: generated.caddy.j2
+    dest: /etc/caddy/generated.caddy
+    owner: root
+    group: root
+    mode: "0644"
   become: true
   notify: Reload caddy
+
+- name: caddy-gitops スクリプトと systemd unit を配置
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: caddy-gitops.sh.j2, dest: /usr/local/sbin/caddy-gitops, mode: "0755" }
+    - { src: caddy-gitops.service.j2, dest: /etc/systemd/system/caddy-gitops.service, mode: "0644" }
+    - { src: caddy-gitops.timer.j2, dest: /etc/systemd/system/caddy-gitops.timer, mode: "0644" }
+  become: true
+  register: reverse_proxy_gitops_units
+
+- name: systemd を再読込
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+  when: reverse_proxy_gitops_units.changed
+
+# バイナリ差し替え / env 変更の restart を先に済ませる。古いプロセスが残ったまま
+# 取り込み側の reload が走ると、新バイナリで adapt した設定(dns cloudflare)を
+# 旧プロセスが受け付けず失敗する
+- name: 保留中の handler(Caddy の restart 等)を先に実行
+  ansible.builtin.meta: flush_handlers
+
+# 先に Caddyfile を取り込んでおく(apt 版の既定 Caddyfile のまま起動させない)。
+# git 側の Caddyfile が壊れていればここで止まる(現行設定は維持される)。
+# main にまだ gateway/caddy/Caddyfile が無ければ何もしない(push 後に timer が取り込む)
+- name: git から Caddyfile を取り込み(caddy-gitops を 1 回実行)
+  ansible.builtin.command: /usr/local/sbin/caddy-gitops
+  register: reverse_proxy_gitops
+  changed_when: "'更新' in reverse_proxy_gitops.stdout"
+  become: true
+
+- name: caddy-gitops.timer を有効化
+  ansible.builtin.systemd_service:
+    name: caddy-gitops.timer
+    enabled: true
+    state: started
+  become: true
 
 - name: Caddy を有効化・起動
   ansible.builtin.systemd_service:
     name: caddy
     enabled: true
     state: started
+    daemon_reload: true
   become: true

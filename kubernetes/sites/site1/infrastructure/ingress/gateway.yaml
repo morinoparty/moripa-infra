@@ -2,9 +2,9 @@
 # gatewayAPI.hostNetwork.enabled=true(cilium values)により Envoy が全ノードの
 # :80 に直接 listen し、Linode 上の Caddy(リバースプロキシ)からの転送を受ける。
 # TLS は Caddy が終端するため HTTPS listener は持たない。
-# 公開するホスト名は HTTPRoute の hostnames に加えて、
-# ansible/group_vars/all/network.yml の proxy_routes にも登録すること
-# (登録が無いと Caddy が受けない)。
+# 公開するホスト名は <app>.site1.dev.morino.party(公開)または
+# <app>.site1.private.dev.morino.party(oauth2-proxy で認証)にする。Caddy は
+# ワイルドカードで受けるので、この規約に従う限り gateway/caddy/Caddyfile の変更は不要。
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:

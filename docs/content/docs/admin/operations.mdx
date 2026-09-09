@@ -30,18 +30,30 @@ IP を直接使う。
 
 ## 公開ホスト名(Caddy)の追加・変更
 
-HTTP/HTTPS の公開は Linode 上の Caddy が担う。ホスト名の追加は
-`ansible/group_vars/all/network.yml` の `proxy_routes` に `{ host, site }` を
-足して `make gateway` を実行するだけでよい(Caddyfile の検証後に reload、
-wg や HAProxy には触れない)。手順の全体は `/docs/architecture/multi-site` の
-「公開サービスと拠点の対応」を参照。
+HTTP/HTTPS の公開は Linode 上の Caddy が担う。`<app>.site<N>.dev.morino.party` /
+`<app>.site<N>.private.dev.morino.party` の規約に従う名前なら Caddy 側の変更は
+不要で、対象拠点に HTTPRoute を置くだけでよい(`/docs/architecture/multi-site`)。
+
+規約外の名前を足すときは `gateway/caddy/Caddyfile` を編集して `main` に push する。
+ハブの `caddy-gitops.timer` が 3 分ごとに取り込み、`caddy validate` を通してから
+reload する(検証に失敗したら現行設定のまま。`journalctl -u caddy-gitops` に理由が出る)。
+即時反映したいときは `ssh gw.wg.morino.party sudo systemctl start caddy-gitops`。
+CI でも同じバイナリで `make lint-caddy` が走るので、壊れた Caddyfile は push 前に分かる。
+
+<Callout title="/etc/caddy/Caddyfile を直接編集しない">
+  次の取り込みで `main` の内容に戻される。`make gateway` も Caddyfile には触れない
+  (Ansible が書くのは `generated.caddy`(拠点別 upstream / tls / 認証の snippet)、
+  `env`(Cloudflare トークン)、`www/` の同期だけ)。
+</Callout>
 
 - ノード障害時の切り替えは Caddy が自動で行う(失敗した upstream を 30秒
   外し、別ノードへ再試行)。手作業は不要
-- 証明書は Let's Encrypt(HTTP-01)で自動取得・更新される。取得に失敗する
-  場合は DNS が `gateway_public_ip` を向いているか、Cloud Firewall と nftables で
-  80/443 が開いているかを `journalctl -u caddy` と合わせて確認する
-- Caddy の状態は `ssh moripa@10.100.0.1 systemctl status caddy`
+- 証明書は Let's Encrypt の **DNS-01(Cloudflare)** でワイルドカードを自動取得・
+  更新する。失敗する場合は Cloudflare トークン(`auth.sops.yml`)の権限
+  (Zone / DNS / Edit、morino.party)と `journalctl -u caddy` を確認する。
+  DNS-01 なので A レコードや 80 番の到達性は取得に関係しない
+- Caddy の状態は `ssh gw.wg.morino.party systemctl status caddy caddy-gitops.timer`
+- 認証(oauth2-proxy)の設定は `/docs/admin/auth`
 
 ## L4 サービス(HAProxy)の追加・変更
 

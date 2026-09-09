@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+# MineAuth(OIDC)で {{ oauth2_proxy_providers.mineauth.groups_claim }} クレームに
+# {{ oauth2_proxy_providers.mineauth.allowed_groups | join(', ') }} を持つ人を許可
+provider = "oidc"
+provider_display_name = "MineAuth"
+client_id = "{{ oauth2_proxy_mineauth_client_id }}"
+client_secret = "{{ oauth2_proxy_mineauth_client_secret }}"
+oidc_issuer_url = "{{ oauth2_proxy_providers.mineauth.issuer_url }}"
+scope = "{{ oauth2_proxy_providers.mineauth.scope }}"
+code_challenge_method = "S256"
+oidc_groups_claim = "{{ oauth2_proxy_providers.mineauth.groups_claim }}"
+allowed_groups = {{ oauth2_proxy_providers.mineauth.allowed_groups | to_json }}
+oidc_email_claim = "{{ oauth2_proxy_providers.mineauth.email_claim }}"
+# MineAuth の email は emailFormat 設定次第で無い/未検証なので、email の検証済みフラグは見ない
+insecure_oidc_allow_unverified_email = true
+email_domains = ["*"]
+
+http_address = "127.0.0.1:{{ oauth2_proxy_providers.mineauth.port }}"
+reverse_proxy = true
+proxy_prefix = "/oauth2/mineauth"
+redirect_url = "https://{{ auth_host }}/oauth2/mineauth/callback"
+whitelist_domains = ["{{ auth_cookie_domain }}"]
+skip_provider_button = true
+
+cookie_name = "_oauth2_proxy_mineauth"
+cookie_secret = "{{ oauth2_proxy_mineauth_cookie_secret }}"
+cookie_domains = ["{{ auth_cookie_domain }}"]
+cookie_secure = true
+cookie_samesite = "lax"
+cookie_expire = "168h"
+cookie_refresh = "1h"
+
+set_xauthrequest = true

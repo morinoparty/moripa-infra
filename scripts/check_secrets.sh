@@ -14,6 +14,9 @@ patterns=(
   'wg_private_key: *[A-Za-z0-9+/]{43}='
   # 初回接続用パスワード(暗号化後は ENC[...] になる)
   '^ansible(_become)?_password: *[^E ].*'
+  # Cloudflare トークン / OAuth クライアント secret / cookie secret(group_vars/gateway/auth.sops.yml)
+  '^cloudflare_dns_api_token: *[^E ].*'
+  '^oauth2_proxy_[a-z]+_(client_secret|cookie_secret): *[^E ].*'
 )
 
 fail=0

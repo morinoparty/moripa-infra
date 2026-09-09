@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodic git pull of the Caddy routing table
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ caddy_gitops_interval }}
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

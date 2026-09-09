@@ -49,16 +49,59 @@ tcp_routes:
 #  - { name: minecraft-site2, port: 25566, site: site2, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
 
 # Linode 上の Caddy(リバースプロキシ)。HTTP/HTTPS はここで受けて TLS を終端し、
-# ホスト名ごとに対象拠点の全ノード :80(Cilium Gateway, hostNetwork)へ
-# wg 越しに転送する。upstream は inventory の groups[site] から自動導出するので
-# ノードの増減で編集不要。ノード障害時は Caddy が別ノードへ自動で切り替える。
-# 証明書は Let's Encrypt(HTTP-01)で自動取得するため、host の DNS を
-# gateway_public_ip に向けてから追加すること(未解決のホストは ACME に失敗し続ける)。
+# ホスト名ごとに対象拠点の全ノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。
+#
+# ルーティング表(どのホスト名をどの拠点へ、どれに認証を掛けるか)は Ansible ではなく
+# git の gateway/caddy/Caddyfile。ハブの caddy-gitops.timer が main を取り込み、
+# `caddy validate` を通してから reload する(caddy_gitops_*)。Ansible が出すのは
+# 配管(/etc/caddy/generated.caddy の snippet: 拠点ごとの upstream、Cloudflare DNS-01 の
+# tls、oauth2-proxy 連携)だけ。upstream は inventory の groups[site] から自動導出する。
+#
+# 命名規約(証明書は Cloudflare DNS-01 のワイルドカード。1 ラベルしか包まないので
+# 階層ごとに 1 枚):
+#   <app>.site1.dev.morino.party          → site1(公開)
+#   <app>.site1.private.dev.morino.party  → site1(oauth2-proxy で認証)
+#   auth.dev.morino.party                 → 認証ポータル(oauth2-proxy のコールバック先)
+# DNS は上記の各ワイルドカード(*.site1.dev 等)と auth.dev を gateway_public_ip に
+# 向ける(DNS only / 灰色雲)。証明書取得自体は A レコードに依存しない。
 # クライアント実IPは X-Forwarded-For で渡す(cilium values の xffNumTrustedHops=1 が前提)
 proxy_public_ports: [80, 443]
-proxy_acme_email: yahiro@morino.party
-proxy_routes: []
-#  - { host: "example.morino.party", site: site1 }
+# Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取得し、apt 版を
+# dpkg-divert + update-alternatives で差し替える(バージョンは versions.yml)。
+# Cloudflare の API トークン(Zone.DNS:Edit, morino.party)は
+# group_vars/gateway/auth.sops.yml の cloudflare_dns_api_token
+caddy_gitops_repo_url: https://github.com/morinoparty/moripa-infra.git
+caddy_gitops_branch: main
+caddy_gitops_subdir: gateway/caddy
+caddy_gitops_interval: 3min
+
+# oauth2-proxy(Linode 上、Caddy の forward auth)。*.site<N>.private.dev.morino.party への
+# アクセスは次のどちらかを満たすと通す(2 プロセス。oauth2-proxy は複数 provider を
+# 1 プロセスで扱えない):
+#   github  : GitHub org "morinoparty" のメンバー
+#   mineauth: MineAuth(OIDC)で roles クレームに "staff" を持つ
+# クライアント ID/secret・cookie secret は group_vars/gateway/auth.sops.yml。
+# 値を入れて oauth2_proxy_enabled: true にするまで private ホストは 503 を返す(fail closed)
+oauth2_proxy_enabled: false
+auth_host: auth.dev.morino.party
+# cookie を共有するドメイン(private ホストと auth_host の共通の親)
+auth_cookie_domain: .dev.morino.party
+oauth2_proxy_providers:
+  github:
+    port: 4180
+    org: morinoparty
+    # GitHub OAuth App の Authorization callback URL:
+    #   https://auth.dev.morino.party/oauth2/github/callback
+  mineauth:
+    port: 4181
+    # MineAuth の OIDC issuer(/.well-known/openid-configuration を持つ URL)
+    issuer_url: "REPLACE_WITH_MINEAUTH_ISSUER_URL"
+    scope: "openid profile email roles"
+    groups_claim: roles
+    allowed_groups: [staff]
+    # MineAuth が email を返さない構成なら preferred_username 等に変える
+    email_claim: email
+    # Redirect URI: https://auth.dev.morino.party/oauth2/mineauth/callback
 
 # WireGuard インターフェース名
 wg_interface: wg0

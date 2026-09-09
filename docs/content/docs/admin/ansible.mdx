@@ -16,7 +16,9 @@ make gateway                                                      # 以降は wg
 
 Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrades)、
 `wireguard` ロール(hub 構成 + nftables の masquerade / 公開ポート / MSS clamp)、
-`reverse_proxy` ロール(Caddy。`proxy_routes` から Caddyfile を生成)、
+`auth_proxy` ロール(oauth2-proxy ×2。`oauth2_proxy_enabled` のときだけ起動)、
+`reverse_proxy` ロール(Caddy。caddy-dns/cloudflare 入りのカスタムビルドを導入し、
+`gateway/caddy/Caddyfile` を git から取り込む `caddy-gitops.timer` を仕込む)、
 `tcp_proxy` ロール(HAProxy。`tcp_routes` から haproxy.cfg を生成)を適用する。
 
 ✅ 検証:
@@ -24,8 +26,10 @@ Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrade
 - `wg show` で peer が5台分(4ノード + 管理者マシン)登録されている
 - `nft list ruleset` で masquerade / MSS clamp / `iifname "wg0" oifname "wg0" accept`
   と、input chain の `tcp dport { 80, 443 } accept`・`tcp dport 25565 accept` が入っている
-- `systemctl status caddy` が active。`proxy_routes` が空のうちは Caddy は
-  どのポートも listen しない(`curl http://<linode_ip>` は接続拒否になる)
+- `systemctl status caddy caddy-gitops.timer` が active。`caddy version` が
+  `versions.yml` の `caddy_version`、`caddy list-modules | grep cloudflare` が出る。
+  `journalctl -u caddy` に 5 枚のワイルドカード証明書の取得ログ(`certificate obtained`)
+  が出る(DNS-01 なので DNS 伝播待ちで数十秒かかる)
 - `systemctl status haproxy` が active。ノード未構築のうちは backend が全 DOWN で正常
 
 ## make cluster の前に: 初回接続はパスワード認証
@@ -129,7 +133,7 @@ control-plane が 1台のため、node1 の全損に備えて etcd スナップ�
   `allowed_sources` を設定済みなら Velocity のホストから)。
   `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
   で backend の両ノードが UP
-- ✅ Caddy: `proxy_routes` に最初のホストを登録して DNS を向けたあと、
+- ✅ Caddy: 規約に沿った名前(例 `test.site1.dev.morino.party`)で
   `curl -v https://<host>` が対象拠点の Gateway に届く(HTTPRoute 未作成なら
   Envoy の 404 が返るのが正常)。DNS 反映前は証明書が無いので HTTPS は
   検証できない。`curl -v --resolve <host>:80:<linode_ip> http://<host>` で

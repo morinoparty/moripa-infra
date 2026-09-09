@@ -1,0 +1,50 @@
+# Linode(ハブ)の Caddy ルーティング表。このファイルが唯一の正で、ハブの
+# caddy-gitops.timer が main から取り込み、`caddy validate` を通してから reload する
+# (ansible/roles/reverse_proxy)。Ansible は配管(generated.caddy)だけを出す。
+#
+# 使える snippet(generated.caddy、inventory から生成):
+#   cf_tls          Cloudflare DNS-01 のワイルドカード証明書
+#   to_site1 / to_site2   その拠点の全ノード :80(Cilium Gateway)へ転送
+#   auth_required   oauth2-proxy(GitHub org morinoparty / MineAuth role staff)を要求
+#   auth_portal     auth.dev.morino.party(ログイン選択画面 + oauth2-proxy のコールバック)
+#
+# 命名: <app>.site<N>.dev.morino.party は公開、<app>.site<N>.private.dev.morino.party は
+# 認証付き。ワイルドカード証明書は 1 ラベルしか包まないので階層ごとにブロックを分ける。
+# ホスト名を足すときは DNS(Cloudflare、DNS only)も gateway_public_ip に向けること。
+# 対象拠点側には同じ hostnames を持つ HTTPRoute を kubernetes/sites/<site>/apps/ に置く。
+{
+	email yahiro@morino.party
+	# admin API(localhost:2019)は reload に必要。off にしないこと
+}
+
+import generated.caddy
+
+# ---- 公開(認証なし)-----------------------------------------------------------
+*.site1.dev.morino.party {
+	import cf_tls
+	import to_site1
+}
+
+*.site2.dev.morino.party {
+	import cf_tls
+	import to_site2
+}
+
+# ---- 認証付き(oauth2-proxy)----------------------------------------------------
+*.site1.private.dev.morino.party {
+	import cf_tls
+	import auth_required
+	import to_site1
+}
+
+*.site2.private.dev.morino.party {
+	import cf_tls
+	import auth_required
+	import to_site2
+}
+
+# ---- 認証ポータル ----------------------------------------------------------------
+auth.dev.morino.party {
+	import cf_tls
+	import auth_portal
+}

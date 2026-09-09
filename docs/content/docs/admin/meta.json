@@ -1,5 +1,5 @@
 {
 	"title": "管理者向け",
 	"icon": "TerminalSquare",
-	"pages": ["index", "keys", "terraform", "ansible", "argocd", "operations"]
+	"pages": ["index", "keys", "terraform", "ansible", "auth", "argocd", "operations"]
 }

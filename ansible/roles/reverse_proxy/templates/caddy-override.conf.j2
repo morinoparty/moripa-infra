@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+[Service]
+EnvironmentFile=/etc/caddy/env
+# apt 版 unit の ExecStart は --environ 付き(起動時に環境変数を journal へ出す)。
+# CF_API_TOKEN を EnvironmentFile で渡すので --environ を外す
+ExecStart=
+ExecStart=/usr/bin/caddy run --config /etc/caddy/Caddyfile

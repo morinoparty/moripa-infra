@@ -5,3 +5,11 @@
     name: caddy
     state: reloaded
   become: true
+
+# バイナリ差し替えや EnvironmentFile の変更は reload では反映されない
+- name: Restart caddy
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: restarted
+    daemon_reload: true
+  become: true

@@ -1,0 +1,103 @@
+# {{ ansible_managed }}
+# 生成元: ansible/roles/reverse_proxy/templates/generated.caddy.j2(inventory から導出)。
+# gateway/caddy/Caddyfile(git、caddy-gitops が取り込む)から import される snippet 集。
+# ここには「配管」だけを置き、どのホスト名をどこへ流すかは Caddyfile 側で決める。
+
+# Cloudflare DNS-01(ワイルドカード証明書)。トークンは /etc/caddy/env の CF_API_TOKEN
+(cf_tls) {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+}
+
+{% for site in ['site1', 'site2'] %}
+# {{ site }} の全クラスタノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送。
+# ヘルスチェックは passive のみ: ホスト名不一致時に Envoy が 404 を返すため
+# active check(health_uri)は使えない。失敗した upstream は fail_duration の間
+# 外され、lb_try_duration 内で別ノードへ再試行する
+(to_{{ site }}) {
+	reverse_proxy {% for h in groups[site] | intersect(groups['k8s_cluster']) | sort %}{{ hostvars[h].wg_address }}:80{{ ' ' if not loop.last }}{% endfor %} {
+		lb_policy round_robin
+		lb_try_duration 5s
+		fail_duration 30s
+	}
+}
+
+{% endfor %}
+{% if oauth2_proxy_enabled %}
+# 認証(oauth2-proxy を 2 プロセス、順に問い合わせる)。
+# 1) github(:{{ oauth2_proxy_providers.github.port }})の /oauth2/github/auth が 2xx → 通す
+# 2) 401 なら mineauth(:{{ oauth2_proxy_providers.mineauth.port }})の /oauth2/mineauth/auth → 2xx なら通す
+# 3) どちらも 401 → auth_host のログイン選択画面へ(rd=元の URL)
+# 通した場合は X-Auth-Request-* を upstream へ渡し、クライアントが詐称した同名ヘッダは
+# 必ず上書きする。forward_auth ディレクティブの展開形(handle_response)を手で書いている
+{% set auth_hdrs = ['User', 'Email', 'Preferred-Username', 'Groups'] %}
+{% macro copy_auth_headers(provider, indent) -%}
+{% for h in auth_hdrs %}
+{{ indent }}@has_{{ h | lower | replace('-', '_') }}_{{ provider }} not vars {rp.header.X-Auth-Request-{{ h }}} ""
+{{ indent }}request_header @has_{{ h | lower | replace('-', '_') }}_{{ provider }} X-Auth-Request-{{ h }} {rp.header.X-Auth-Request-{{ h }}}
+{% endfor %}
+{{ indent }}request_header X-Auth-Provider {{ provider }}
+{%- endmacro %}
+(auth_required) {
+	# クライアントが持ち込んだ認証ヘッダは必ず捨てる(通った場合だけ下で付け直す)
+{% for h in auth_hdrs %}
+	request_header -X-Auth-Request-{{ h }}
+{% endfor %}
+	request_header -X-Auth-Provider
+	reverse_proxy 127.0.0.1:{{ oauth2_proxy_providers.github.port }} {
+		method GET
+		rewrite /oauth2/github/auth
+		header_up X-Forwarded-Method {method}
+		header_up X-Forwarded-Uri {uri}
+		@ok status 2xx
+		handle_response @ok {
+{{ copy_auth_headers('github', '			') }}
+		}
+		@unauth status 401
+		handle_response @unauth {
+			reverse_proxy 127.0.0.1:{{ oauth2_proxy_providers.mineauth.port }} {
+				method GET
+				rewrite /oauth2/mineauth/auth
+				header_up X-Forwarded-Method {method}
+				header_up X-Forwarded-Uri {uri}
+				@ok2 status 2xx
+				handle_response @ok2 {
+{{ copy_auth_headers('mineauth', '					') }}
+				}
+				@unauth2 status 401
+				handle_response @unauth2 {
+					redir https://{{ auth_host }}/?rd={scheme}://{host}{uri}
+				}
+			}
+		}
+	}
+}
+
+# 認証ポータル({{ auth_host }}): 各 provider の /oauth2/<name>/* を対応プロセスへ、
+# それ以外は /etc/caddy/www のログイン選択画面(git の gateway/caddy/www)
+(auth_portal) {
+	handle /oauth2/github/* {
+		reverse_proxy 127.0.0.1:{{ oauth2_proxy_providers.github.port }}
+	}
+	handle /oauth2/mineauth/* {
+		reverse_proxy 127.0.0.1:{{ oauth2_proxy_providers.mineauth.port }}
+	}
+	handle {
+		root * /etc/caddy/www
+		file_server
+	}
+}
+{% else %}
+# oauth2_proxy_enabled=false: 認証は未設定。private ホストは fail closed(503)。
+# group_vars/gateway/auth.sops.yml にクライアント ID/secret を入れて
+# oauth2_proxy_enabled: true にし、make gateway で有効化する
+(auth_required) {
+	respond "authentication is not configured on this gateway" 503
+}
+
+(auth_portal) {
+	respond "authentication is not configured on this gateway" 503
+}
+{% endif %}

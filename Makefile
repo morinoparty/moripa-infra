@@ -81,7 +81,7 @@ endif
 # ---- 検証 -------------------------------------------------------------------
 
 .PHONY: lint lint-yaml lint-terraform lint-ansible lint-helm lint-kustomize check-consistency
-lint: lint-yaml lint-terraform lint-ansible lint-helm lint-kustomize check-consistency
+lint: lint-yaml lint-terraform lint-ansible lint-helm lint-kustomize lint-caddy check-consistency
 
 lint-yaml:
 	$(VENV)/bin/yamllint .
@@ -105,6 +105,28 @@ lint-helm: ## Cilium values (common + 各 site) が chart に対して有効か�
 	    -f kubernetes/common/cilium/values.yaml \
 	    -f kubernetes/sites/$$s/infrastructure/cilium/values.yaml > /dev/null \
 	    && echo "cilium values OK ($$s)" || exit 1; \
+	done
+
+# Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取る(ハブと同じもの)。
+# generated.caddy(Ansible 生成)を手元にレンダリングし、git の gateway/caddy/Caddyfile と
+# 合わせて caddy validate に掛ける。DNS モジュールはトークン形式を検査するのでダミーを渡す
+CADDY_RENDER_DIR := .caddy-render
+CADDY_BIN := $(CADDY_RENDER_DIR)/caddy
+lint-caddy: ## gateway/caddy/Caddyfile + Ansible 生成 snippet を caddy validate で検証
+	@mkdir -p $(CADDY_RENDER_DIR)
+	@cv=$$(grep -oP 'caddy_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	mv=$$(grep -oP 'caddy_cloudflare_module_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	if ! [ -x $(CADDY_BIN) ] || ! $(CADDY_BIN) version | grep -q "$$cv"; then \
+	  echo "caddy $$cv (+cloudflare $$mv) をダウンロード中..."; \
+	  curl -sSfL -o $(CADDY_BIN) "https://caddyserver.com/api/download?os=linux&arch=amd64&p=github.com/caddy-dns/cloudflare@$$mv&version=$$cv" && chmod +x $(CADDY_BIN); \
+	fi
+	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/render-caddy.yml -e caddy_render_dir=$(abspath $(CADDY_RENDER_DIR)) > /dev/null
+	cd ansible && ../$(VENV)/bin/ansible-playbook playbooks/render-caddy.yml -e caddy_render_dir=$(abspath $(CADDY_RENDER_DIR))/on -e oauth2_proxy_enabled=true > /dev/null
+	@for d in $(CADDY_RENDER_DIR) $(CADDY_RENDER_DIR)/on; do \
+	  cp gateway/caddy/Caddyfile $$d/Caddyfile; \
+	  printf 'CF_API_TOKEN=%s\n' "$$(printf 'x%.0s' $$(seq 40))" > $$d/env; \
+	  $(abspath $(CADDY_BIN)) validate --adapter caddyfile --config $$d/Caddyfile --envfile $$d/env > /dev/null 2>$$d/validate.err \
+	    && echo "caddy validate OK ($$d)" || { cat $$d/validate.err; exit 1; }; \
 	done
 
 KUSTOMIZE_DIRS := \

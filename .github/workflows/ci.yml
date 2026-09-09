@@ -85,6 +85,13 @@ jobs:
             kubectl kustomize "$d" > /dev/null
           done
 
+      # ハブと同じカスタムビルド(caddy-dns/cloudflare 入り)で、git の Caddyfile と
+      # Ansible 生成 snippet(auth 有効/無効の両方)を validate する
+      - name: gateway/caddy/Caddyfile を caddy validate
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+        run: make lint-caddy
+
       - name: check-consistency
         run: .venv/bin/python scripts/check_consistency.py
 

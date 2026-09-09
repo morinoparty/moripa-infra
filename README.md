@@ -45,10 +45,15 @@ moripa-infra/
 │   │   └── linode-gateway/     # Nanode + Firewall + cloud-init
 │   └── envs/
 │       └── prod/               # 実環境の tfvars(state はローカル + gitignore)
+├── gateway/
+│   └── caddy/                  # ★ Linode 上の Caddy のルーティング表(ハブが git から自動取り込み)
+│       ├── Caddyfile           # *.site<N>.dev / *.site<N>.private.dev / auth.dev
+│       └── www/                # ログイン選択画面
 ├── ansible/
 │   ├── inventory/hosts.yml     # gateway / site1(_control_plane) / site2(_control_plane)
 │   ├── group_vars/
 │   │   ├── all/network.yml     # ★ 共通ネットワーク値の唯一の正
+│   │   ├── gateway/            # ハブ固有(auth.sops.yml: Cloudflare トークン / OAuth クライアント)
 │   │   └── site1.yml, site2.yml  # 拠点別(クラスタ用サブネット / VIP / グループ名)
 │   ├── host_vars/<host>/       # wg 公開鍵(平文) + 秘密鍵(sops 暗号化)
 │   ├── roles/
@@ -56,7 +61,8 @@ moripa-infra/
 │   │   ├── wireguard/          # hub/spoke 両対応 + nftables (masquerade / 公開ポート / MSS clamp)
 │   │   ├── cluster_lan/        # クラスタ用の第 2 サブネットを LAN NIC に追加(netplan)
 │   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス)
-│   │   ├── reverse_proxy/      # Linode 上の Caddy(proxy_routes → 拠点ノード :80)
+│   │   ├── auth_proxy/         # Linode 上の oauth2-proxy(GitHub org / MineAuth staff)
+│   │   ├── reverse_proxy/      # Linode 上の Caddy(gateway/caddy/Caddyfile を git から取り込む)
 │   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort)
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
 │   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
@@ -118,7 +124,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
-| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | 25565 は HAProxy(`tcp_routes`、Velocity 配下)、80/443 は Caddy(`proxy_routes` でホスト名 → 拠点)。SSH は公開せず wg 経由のみ |
+| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | 25565 は HAProxy(`tcp_routes`、Velocity 配下)、80/443 は Caddy(`gateway/caddy/Caddyfile`。`*.site<N>.dev.morino.party` → 拠点、`*.site<N>.private.dev.morino.party` は oauth2-proxy 認証)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## 注意: Nanode の転送量上限
@@ -138,4 +144,5 @@ split-tunnel でも壊れない(ノードの外向き IP が自宅回線にな�
 - [ ] 実鍵の生成(age 鍵 3種、wg 鍵)→ 管理者向けドキュメント(docs/content/docs/admin/)
 - [ ] 実機適用(管理者向けドキュメント(docs/content/docs/admin/) の手順に従う)
 - [ ] etcd の定期バックアップ(control-plane が 1台のため必須。未実装)
-- [ ] 公開ホスト名の DNS を Linode に向け、`proxy_routes` に登録
+- [x] 公開ホスト名の DNS(`*.site<N>.dev` / `*.site<N>.private.dev` / `auth.dev`)を Linode に向け、Caddy をワイルドカード + DNS-01 で構成
+- [ ] oauth2-proxy の GitHub OAuth App / MineAuth クライアントを登録し `oauth2_proxy_enabled: true`

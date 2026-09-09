@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>morino.party ログイン</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f5f7; color: #1c1e21; }
+  @media (prefers-color-scheme: dark) { body { background: #17191c; color: #e6e6e6; } .card { background: #23262b; } }
+  .card { background: #fff; padding: 2rem 2.5rem; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.12); max-width: 26rem; width: calc(100% - 2rem); }
+  h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 1.25rem; font-size: .9rem; opacity: .8; word-break: break-all; }
+  a.btn { display: block; text-align: center; padding: .8rem 1rem; margin: .6rem 0; border-radius: 8px; text-decoration: none; font-weight: 600; color: #fff; }
+  a.gh { background: #24292f; }
+  a.ma { background: #2f855a; }
+  small { display: block; margin-top: 1rem; font-size: .75rem; opacity: .6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>ログインが必要です</h1>
+  <p id="dest"></p>
+  <a class="btn gh" id="gh" href="/oauth2/github/start">GitHub でログイン<br><small style="color:#fff;opacity:.8;margin:0">morinoparty org のメンバー</small></a>
+  <a class="btn ma" id="ma" href="/oauth2/mineauth/start">MineAuth でログイン<br><small style="color:#fff;opacity:.8;margin:0">staff ロール</small></a>
+  <small>morino.party 内部向け。どちらか一方の条件を満たせば入れます。</small>
+</div>
+<script>
+  // Caddy から ?rd=<元の URL> 付きでリダイレクトされてくる。各 provider の
+  // /oauth2/<name>/start へ rd を引き継ぐ(許可ドメインは oauth2-proxy 側で検査)
+  var rd = new URLSearchParams(location.search).get("rd");
+  if (rd) {
+    document.getElementById("dest").textContent = "移動先: " + rd;
+    ["gh", "ma"].forEach(function (id) {
+      var a = document.getElementById(id);
+      a.href += "?rd=" + encodeURIComponent(rd);
+    });
+  }
+</script>
+</body>
+</html>

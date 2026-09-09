@@ -102,20 +102,21 @@ nftables も wg0 発の 53 番だけ通す。クライアントはそのゾー�
 
 ## 公開経路は 2 種類: Caddy(L7)と HAProxy(L4)
 
-| | Caddy(`proxy_routes`) | HAProxy(`tcp_routes`) |
+| | Caddy(`gateway/caddy/Caddyfile`) | HAProxy(`tcp_routes`) |
 |---|---|---|
 | 対象 | HTTP/HTTPS(80/443) | Minecraft 25565 など L4 のサービス |
 | 転送先 | ホスト名ごとに対象拠点の**全ノード** `:80`(Cilium Gateway, hostNetwork) | port ごとに対象拠点の**全ノード**の NodePort(`externalTrafficPolicy: Cluster`) |
 | ノード障害 | passive ヘルスチェックで別ノードへ自動切替 | TCP ヘルスチェックで別ノードへ自動切替 |
-| TLS | Caddy が終端(Let's Encrypt HTTP-01 で自動取得) | アプリ側 |
+| TLS | Caddy が終端(Let's Encrypt DNS-01 / Cloudflare でワイルドカード) | アプリ側 |
 | クライアント実IP | `X-Forwarded-For`(Cilium の `gatewayAPI.xffNumTrustedHops: 1` で Envoy が信頼) | 届かない。Minecraft は前段の Velocity が modern forwarding で渡す |
-| 送信元制限 | なし | `allowed_sources`(nftables で絞る。Velocity の IP を入れる) |
+| 認証 / 送信元制限 | `*.site<N>.private.dev.morino.party` は oauth2-proxy(GitHub org / MineAuth staff) | `allowed_sources`(nftables で絞る。Velocity の IP を入れる) |
 | 両拠点 | 1 台の Caddy で site1 / site2 を混在可 | port ごとに拠点を指定 |
 
 Caddy / HAProxy → ノードの通信はハブ自身(`10.100.0.1`)を送信元として wg0 へ
 出るため NAT は不要で、ノード側は Cilium の `devices` に含まれる `wg0` で
-受ける。Caddy はホスト名が `proxy_routes` に無い接続を受けないため、HTTPRoute
-を追加するときは `proxy_routes` への登録と DNS の向き先設定も必要になる。
+受ける。Caddy は `*.site<N>.dev.morino.party` / `*.site<N>.private.dev.morino.party`
+をワイルドカードで受けるので、この規約の名前なら HTTPRoute を置くだけで公開される
+(`/docs/architecture/multi-site`)。
 
 ## nftables 設定例(ハブ)
 
@@ -159,8 +160,9 @@ table inet nat {
   既存接続を切断する(クラスタ内通信は LAN 直通なので影響しない)。
   `Address` / `MTU` / `PostUp` などの Interface 行を変えた場合のみ計画的に
   restart する
-- Caddy の設定変更(`proxy_routes`)は `make gateway` で反映される
-  (`caddy validate` を通してから `systemctl reload caddy`。wg には触れない)
+- Caddy のルーティング表(`gateway/caddy/Caddyfile`)は git push で反映される
+  (ハブの `caddy-gitops.timer` が `caddy validate` を通してから
+  `systemctl reload caddy`。wg には触れない)。Ansible 側の snippet 変更は `make gateway`
 - 疎通確認は `wg show` の handshake、`ping 10.100.0.1`、
   `curl ifconfig.me` が Linode のIPを返すことで行う
 - クラスタ健全性の確認として、同一拠点の他ノードの `lan_address` へ ping が

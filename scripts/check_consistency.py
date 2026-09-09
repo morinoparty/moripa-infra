@@ -161,12 +161,20 @@ else:
         f"tcp_routes(port) ∪ proxy_public_ports={sorted(tcp_ports | proxy_ports)}",
     )
 
-# --- proxy_routes の site が実在する拠点であること -----------------------------
-for r in network.get("proxy_routes") or []:
-    check(
-        r.get("site") in SITES,
-        f"proxy_routes {r.get('host')} の site={r.get('site')} が {SITES} に無い",
-    )
+# --- gateway/caddy/Caddyfile が import する snippet が Ansible 側に存在すること ------
+caddyfile = (ROOT / "gateway/caddy/Caddyfile").read_text()
+snippet_tpl = (ROOT / "ansible/roles/reverse_proxy/templates/generated.caddy.j2").read_text()
+defined = set(re.findall(r"^\(([A-Za-z0-9_]+)\)\s*\{", snippet_tpl, re.M))
+for site in SITES:
+    defined.add(f"to_{site}")  # for ループで生成される
+for name in re.findall(r"^\s*import\s+([A-Za-z0-9_]+)\s*$", caddyfile, re.M):
+    check(name in defined, f"gateway/caddy/Caddyfile の import {name} が generated.caddy.j2 に無い")
+for m in re.finditer(r"import\s+to_(site\d+)", caddyfile):
+    check(m.group(1) in SITES, f"gateway/caddy/Caddyfile の to_{m.group(1)} が {SITES} に無い")
+check(
+    re.search(rf"^{re.escape(network['auth_host'])}\s*\{{", caddyfile, re.M) is not None,
+    f"gateway/caddy/Caddyfile に auth_host({network['auth_host']})のブロックが無い",
+)
 
 # --- minecraft: Service nodePort ↔ tcp_routes.node_port -----------------------
 mc_route = next((r for r in tcp_routes if r["name"] == "minecraft"), None)

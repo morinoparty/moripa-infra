@@ -1,0 +1,58 @@
+---
+title: 認証(oauth2-proxy)
+description: "*.site<N>.private.dev.morino.party に掛ける認証の仕組みと有効化手順"
+---
+
+`<app>.site<N>.private.dev.morino.party` へのアクセスは Linode 上の oauth2-proxy が
+検査し、次の **どちらか** を満たす人だけ通す:
+
+| provider | 条件 | プロセス |
+|---|---|---|
+| GitHub | org `morinoparty` のメンバー | `oauth2-proxy@github`(127.0.0.1:4180) |
+| MineAuth(OIDC) | `roles` クレームに `staff` を含む | `oauth2-proxy@mineauth`(127.0.0.1:4181) |
+
+oauth2-proxy は 1 プロセスに複数 provider を持てないため 2 プロセス動かし、Caddy が
+順に問い合わせる(`generated.caddy` の `auth_required` snippet)。どちらの cookie も
+無ければ `https://auth.dev.morino.party/?rd=<元の URL>` のログイン選択画面へ送る。
+通ったリクエストには `X-Auth-Request-User` / `-Email` / `-Groups` と
+`X-Auth-Provider`(`github` | `mineauth`)を付けて拠点へ転送する(クライアントが
+持ち込んだ同名ヘッダは捨てる)。
+
+<Callout title="有効化するまでは 503">
+  `oauth2_proxy_enabled: false`(既定)のあいだ `*.private.*` は 503 を返す
+  (認証なしで通すことはない)。`auth.dev.morino.party` も 503。
+</Callout>
+
+## 有効化の手順
+
+1. **GitHub OAuth App** を org で作る
+   (`https://github.com/organizations/morinoparty/settings/applications`)。
+   Authorization callback URL は `https://auth.dev.morino.party/oauth2/github/callback`。
+   org 所属の検査に `read:org` を使うので、org 側で OAuth App のアクセスを承認しておく
+2. **MineAuth のクライアント** を登録する。Redirect URI は
+   `https://auth.dev.morino.party/oauth2/mineauth/callback`、スコープは
+   `openid profile email roles`。issuer URL(`/.well-known/openid-configuration` を
+   持つ URL)を `ansible/group_vars/all/network.yml` の
+   `oauth2_proxy_providers.mineauth.issuer_url` に書く。MineAuth が email を返さない
+   構成なら `email_claim` を `preferred_username` に変える
+3. 秘密を入れる: `sops ansible/group_vars/gateway/auth.sops.yml` で
+   `oauth2_proxy_github_client_id` / `_secret`、`oauth2_proxy_mineauth_client_id` /
+   `_secret` を実値にする(cookie secret と Cloudflare トークンは設定済み)
+4. `network.yml` の `oauth2_proxy_enabled: true` にして `make gateway`。
+   `auth_proxy` ロールが値の抜けを assert で止める
+5. 確認: `https://auth.dev.morino.party/` にログイン選択画面が出る。
+   `https://<何か>.site1.private.dev.morino.party/` が選択画面へ飛び、GitHub /
+   MineAuth のどちらかでログイン後に元の URL へ戻る(HTTPRoute が無ければ
+   Envoy の 404 が返るのが正常)。ハブ側は
+   `systemctl status oauth2-proxy@github oauth2-proxy@mineauth`
+
+## 運用メモ
+
+- セッションは 7 日(`cookie_expire`)、1 時間ごとに更新。cookie ドメインは
+  `.dev.morino.party` なので `private` 配下のどのアプリでも 1 回のログインで済む
+- ログアウトは `https://auth.dev.morino.party/oauth2/github/sign_out` /
+  `/oauth2/mineauth/sign_out`
+- 認証の対象を増やしたいときは `gateway/caddy/Caddyfile` で `import auth_required` を
+  そのホストのブロックに足す(private 以外の名前にも掛けられる)
+- GitHub の org メンバーシップが private の人も通す(トークン側で読む)。
+  team で絞りたければ `github.cfg.j2` に `github_team` を足す

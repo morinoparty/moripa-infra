@@ -25,21 +25,28 @@ description: Pod/Service CIDR共有の制約と、site3追加・worker追加の�
 
 ## 公開サービスと拠点の対応
 
-### HTTP/HTTPS: `proxy_routes`(Caddy)
+### HTTP/HTTPS: ホスト名の規約(Caddy)
 
-`ansible/group_vars/all/network.yml` の `proxy_routes` に
-`{ host, site }` を追加すると、Linode 上の Caddy がそのホスト名を
-`site` の全ノード `:80`(Cilium Gateway)へ転送する。手順:
+Linode 上の Caddy はワイルドカードで受け、ホスト名の階層で拠点と認証の有無を決める:
 
-1. DNS でホスト名を `gateway_public_ip` に向ける(先にやらないと
-   Caddy の証明書取得が失敗し続ける)
-2. `proxy_routes` に `{ host: "app.morino.party", site: site2 }` を追加して
-   `make gateway`
-3. 対象拠点のクラスタに、その `hostnames` を持つ HTTPRoute を
-   `kubernetes/sites/<site>/apps/` に追加(Gateway `public` を parentRef に)
+| ホスト名 | 拠点 | 認証 |
+|---|---|---|
+| `<app>.site1.dev.morino.party` | site1 | なし |
+| `<app>.site2.dev.morino.party` | site2 | なし |
+| `<app>.site1.private.dev.morino.party` | site1 | oauth2-proxy(GitHub org / MineAuth staff) |
+| `<app>.site2.private.dev.morino.party` | site2 | 同上 |
 
-upstream は inventory から自動導出されるため、ノードの増減で `proxy_routes`
-を触る必要はない。
+この規約に従う限り、新しいアプリを公開する手順は **対象拠点のクラスタに
+その `hostnames` を持つ HTTPRoute を `kubernetes/sites/<site>/apps/` に置く**
+(Gateway `public` を parentRef に)だけ。DNS はワイルドカード(`*.site1.dev` 等)
+を登録済みなので個別の A レコードも要らず、証明書もワイルドカード(Cloudflare
+DNS-01)で取得済み。
+
+規約から外れた名前(例: `app.morino.party`)を使いたいときは
+`gateway/caddy/Caddyfile` にブロックを足す(`import cf_tls` + `import to_<site>`)。
+ハブは 3 分ごとに `main` を取り込んで反映する(`/docs/admin/operations`)。
+upstream は inventory から自動導出されるため、ノードの増減で Caddyfile を
+触る必要はない。
 
 ### L4(Minecraft 等): `tcp_routes`(HAProxy)
 

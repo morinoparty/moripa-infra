@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# GitHub org {{ oauth2_proxy_providers.github.org }} のメンバーを許可(read:org スコープで org 所属を検査)
+provider = "github"
+provider_display_name = "GitHub"
+client_id = "{{ oauth2_proxy_github_client_id }}"
+client_secret = "{{ oauth2_proxy_github_client_secret }}"
+scope = "user:email read:org"
+github_org = "{{ oauth2_proxy_providers.github.org }}"
+email_domains = ["*"]
+
+http_address = "127.0.0.1:{{ oauth2_proxy_providers.github.port }}"
+reverse_proxy = true
+proxy_prefix = "/oauth2/github"
+redirect_url = "https://{{ auth_host }}/oauth2/github/callback"
+whitelist_domains = ["{{ auth_cookie_domain }}"]
+skip_provider_button = true
+
+cookie_name = "_oauth2_proxy_github"
+cookie_secret = "{{ oauth2_proxy_github_cookie_secret }}"
+cookie_domains = ["{{ auth_cookie_domain }}"]
+cookie_secure = true
+cookie_samesite = "lax"
+cookie_expire = "168h"
+cookie_refresh = "1h"
+
+# /oauth2/github/auth の 2xx で X-Auth-Request-* を返す(Caddy が upstream へ渡す)
+set_xauthrequest = true

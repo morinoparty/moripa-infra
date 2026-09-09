@@ -6,7 +6,7 @@
 # LAN NIC に重ね、DHCP で貰う LAN IP はどこにも使わない。
 
 # terraform output -raw public_ip から転記(make tf-output)
-gateway_public_ip: "203.0.113.10"
+gateway_public_ip: "139.162.104.78"
 
 wg_cidr: 10.100.0.0/24
 wg_hub_address: 10.100.0.1
@@ -20,6 +20,7 @@ gateway_wan_interface: eth0
 # SSH は wg 経由のみの運用なので、管理者マシンを必ずここに登録する
 wg_extra_peers:
   - { name: admin, public_key: "SkO8raeJ3sYVa3zz3N8zlacUpQFPUrPd08fLWD1geVk=", allowed_ips: 10.100.0.100/32 }  # 管理者マシン(秘密鍵は ~/keys/wg-admin.key)
+  - { name: admin-windows, public_key: "nJfl9ocIyh6yC3PLkShe7Nyd+9bAe/pPWcnZ1MG7ygU=", allowed_ips: 10.100.0.101/32 }  # 管理者の Windows 機(WireGuard for Windows)
 
 # Pod / Service CIDR は両拠点で同一値を使う。クラスタ同士は接続しないため
 # 重複しても問題ない(将来 cluster mesh 等で接続するなら再IP設計が必要 →
@@ -54,3 +55,12 @@ proxy_routes: []
 
 # WireGuard インターフェース名
 wg_interface: wg0
+
+# wg 内の名前解決(ハブの dnsmasq、10.100.0.1:53、wg0 からのみ応答)。
+# <inventory_hostname>.<wg_dns_domain> → wg_address、wg_extra_peers の name も同様。
+# linode-gw には別名 gw も付く。クライアントは [Interface] に DNS = 10.100.0.1 を書く
+# (Linux は resolvectl で ~wg.morino.party だけ向けるのが推奨、docs/admin/keys 参照)
+wg_dns_domain: wg.morino.party
+wg_dns_gateway_alias: gw
+# ゾーン外の問い合わせの転送先(クライアントが DNS を 10.100.0.1 一本にしても困らないように)
+wg_dns_upstreams: [1.1.1.1, 1.0.0.1]

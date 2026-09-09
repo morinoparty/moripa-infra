@@ -72,16 +72,24 @@ wg genkey | tee ~/keys/wg-admin.key | wg pubkey   # 表示された公開鍵を�
 トンネルにせず、管理経路(`10.100.0.0/24`)のみ通す:
 
 ```ini
-# 管理者マシンの /etc/wireguard/wg0.conf
+# 管理者マシンの /etc/wireguard/wg0.conf(Linux)
 [Interface]
 Address    = 10.100.0.100/32
 PrivateKey = <~/keys/wg-admin.key の中身>
+# wg.morino.party だけハブの dnsmasq で引く(split DNS。/docs/architecture/reference の DNS 節)
+PostUp     = resolvectl dns %i 10.100.0.1; resolvectl domain %i ~wg.morino.party
 [Peer]
 PublicKey           = <linode-gw の公開鍵>
 Endpoint            = <linode public ip>:51820
 AllowedIPs          = 10.100.0.0/24
 PersistentKeepalive = 25
 ```
+
+Windows は標準の「VPN 接続を追加」では繋げない(WireGuard 非対応)ため、
+WireGuard for Windows で「空のトンネルを追加」し、生成された公開鍵を
+`wg_extra_peers` に別のアドレス(例: `10.100.0.101/32`)で登録して
+`make gateway` を再実行する。Windows 側の設定は上と同じ内容で、`PostUp` の
+代わりに `DNS = 10.100.0.1, wg.morino.party` を書く。
 
 ## GitHub deploy key は不要
 

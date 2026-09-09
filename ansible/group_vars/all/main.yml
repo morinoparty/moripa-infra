@@ -1,7 +1,8 @@
 admin_user: moripa
 # 管理者の SSH 公開鍵(terraform.tfvars の admin_ssh_keys と同じもの)
-admin_ssh_pubkeys: []
-#  - "ssh-ed25519 AAAA... yahiro@morino.party"
+admin_ssh_pubkeys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPU9TKqjEA+vskebF8GVZiLc4V9s3BGbA07B9E15WdKX nikomaru@linode-dev"  # terraform.tfvars の admin_ssh_keys と同じ
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICS6zP54bvSBtyML1Ap87RSkahT4CfG5ye7Wn16Xlyjw"  # 管理者の Windows 機
 
 timezone: Asia/Tokyo
 

@@ -90,6 +90,14 @@ InternalIP・Cilium の VXLAN 端点に焼き込むため、DHCP で変わり得
   Pod の MTU は VXLAN の 50 を引いて **1450**
 - 南北の TCP はハブ側の MSS clamp で救済する
 
+## wg 内の名前解決
+
+ハブで dnsmasq(`roles/wg_dns`)を動かし、`<host>.wg.morino.party` を wg アドレス
+に解決する(レコードは inventory から生成)。wg0 からの問い合わせにだけ応答し、
+nftables も wg0 発の 53 番だけ通す。クライアントはそのゾーンだけをハブの DNS へ
+向ける(Linux は `resolvectl domain wg0 ~wg.morino.party`、Windows は
+`DNS = 10.100.0.1, wg.morino.party`)。一覧は `/docs/architecture/reference`。
+
 ## 公開経路は 2 種類: Caddy(L7)と HAProxy(L4)
 
 | | Caddy(`proxy_routes`) | HAProxy(`tcp_routes`) |

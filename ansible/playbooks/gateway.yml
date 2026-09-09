@@ -1,7 +1,10 @@
-- name: Linode ゲートウェイ(WireGuard ハブ + NAT + Caddy + HAProxy)を構成
+- name: Linode ゲートウェイ(WireGuard ハブ + NAT + DNS + Caddy + HAProxy)を構成
   hosts: gateway
+  # 途中で失敗しても notify 済みの handler(nftables reload 等)を必ず実行する
+  force_handlers: true
   roles:
     - base
     - wireguard
+    - wg_dns
     - reverse_proxy
     - tcp_proxy

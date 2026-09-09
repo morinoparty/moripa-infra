@@ -11,10 +11,14 @@ description: SSH経路、Caddy / HAProxy の公開ルート運用、Linode・con
 アクセスする。
 
 ```sh
-ssh moripa@10.100.0.1    # ゲートウェイ(linode-gw)
-ssh moripa@10.100.0.11   # site1-node1
-ssh moripa@10.100.0.21   # site2-node1
+ssh moripa@gw.wg.morino.party            # ゲートウェイ(linode-gw、10.100.0.1)
+ssh moripa@site1-node1.wg.morino.party   # 10.100.0.11
+ssh moripa@site2-node1.wg.morino.party   # 10.100.0.21
 ```
+
+名前はハブの dnsmasq が返す(`/docs/architecture/reference` の DNS 節)。
+wg クライアント側で `wg.morino.party` をハブの DNS に向けていない場合は
+IP を直接使う。
 
 <Callout title="公開SSHを閉じる前の必須確認(再掲)">
   管理者マシンを `wg_extra_peers` に登録し `make gateway` を再実行済みで、

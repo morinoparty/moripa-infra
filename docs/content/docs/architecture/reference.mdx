@@ -40,6 +40,21 @@ forwarding でプレイヤー IP を渡す)。`terraform` の `public_tcp_ports`
 `tcp_routes` の port + `proxy_public_ports` であること、`node_port` が
 Minecraft Service の nodePort と一致することは `make check-consistency` が検査する。
 
+## wg 内の DNS(`ansible/group_vars/all/network.yml` の `wg_dns_*`)
+
+ハブの dnsmasq(`roles/wg_dns`)が `10.100.0.1:53` で wg0 からの問い合わせにだけ
+応答する。レコードは inventory と `wg_extra_peers` から生成される。
+
+| 名前 | アドレス |
+|---|---|
+| `gw.wg.morino.party` / `linode-gw.wg.morino.party` | `10.100.0.1` |
+| `<inventory_hostname>.wg.morino.party`(例: `site1-node1`) | そのホストの `wg_address` |
+| `<wg_extra_peers[].name>.wg.morino.party`(例: `admin`) | その peer の `allowed_ips` |
+
+ゾーン外の問い合わせは `wg_dns_upstreams`(1.1.1.1 / 1.0.0.1)へ転送する。
+クラスタ用の `10.200.x.x` は wg から届かないため登録しない。クライアント側の
+設定は `/docs/admin/keys` を参照。
+
 ## Caddy の公開ルート(`ansible/group_vars/all/network.yml` の `proxy_routes`)
 
 | 変数 | 値 | 備考 |

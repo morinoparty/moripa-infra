@@ -31,7 +31,8 @@
       PermitRootLogin no
       X11Forwarding no
     mode: "0644"
-    validate: sshd -T -f /etc/ssh/sshd_config -C user=root -o Include=%s
+    # OpenSSH 10 は -o Include= を拒否するため drop-in 単体の構文を検証する
+    validate: sshd -t -f %s
   become: true
   notify: Restart sshd
 

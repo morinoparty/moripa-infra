@@ -55,6 +55,7 @@ moripa-infra/
 │   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades
 │   │   ├── wireguard/          # hub/spoke 両対応 + nftables (masquerade / 公開ポート / MSS clamp)
 │   │   ├── cluster_lan/        # クラスタ用の第 2 サブネットを LAN NIC に追加(netplan)
+│   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス)
 │   │   ├── reverse_proxy/      # Linode 上の Caddy(proxy_routes → 拠点ノード :80)
 │   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort)
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
@@ -90,7 +91,7 @@ moripa-infra/
 ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 
 1. **Terraform**: Linode Nanode 作成 (`terraform/envs/prod`)
-2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables + Caddy + HAProxy を設定
+2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables + dnsmasq + Caddy + HAProxy を設定
 3. **Ansible `cluster.yml`**(両拠点を順に処理):
    1. `base` + `wireguard`: 全ノードを spoke として接続
    2. `cluster_lan`: 第 2 サブネットの固定アドレスを LAN NIC に追加(ルーター設定不要)

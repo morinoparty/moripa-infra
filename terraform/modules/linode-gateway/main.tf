@@ -13,11 +13,22 @@ resource "linode_instance" "gateway" {
   type   = var.instance_type
   image  = var.image
 
+  # provider の必須項目(image 指定時は authorized_keys か root_pass が要る)。
+  # root ログイン自体は cloud-init の disable_root で無効化される
+  authorized_keys = var.admin_ssh_keys
+
   metadata {
     user_data = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", {
       admin_username = var.admin_username
       admin_ssh_keys = var.admin_ssh_keys
     }))
+  }
+
+  # authorized_keys と cloud-init(metadata)は作成時にしか効かず、変更すると
+  # インスタンスが作り直される。作成後の SSH 鍵の追加・削除は Ansible の base
+  # ロール(admin_ssh_pubkeys)が担うので、ここでは差分を無視する
+  lifecycle {
+    ignore_changes = [authorized_keys, metadata]
   }
 }
 

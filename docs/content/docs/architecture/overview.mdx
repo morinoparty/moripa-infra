@@ -35,20 +35,17 @@ graph TB
     GW -- "WireGuard(フルトンネル)" --> S2N2
 ```
 
-各拠点は node1 が control-plane(stacked etcd、schedulable)、node2 が worker の
-2台構成の独立クラスタ。拠点間にクラスタレベルの接続はなく、障害ドメインは
-完全に分離されている。クラスタ内通信は拠点の LAN で直接行い、Linode を
-経由しない。
+site1 は 3台とも control-plane(stacked etcd 3メンバー、全ノード schedulable)の
+独立クラスタ、site2 は node1 が control-plane、node2 が worker の 2台構成。
+拠点間にクラスタレベルの接続はなく、障害ドメインは完全に分離されている。
+クラスタ内通信は拠点の LAN で直接行い、Linode を経由しない。
 
-<Callout title="各拠点のクラスタは HA ではない" type="warn">
-  control-plane が 1台(etcd 1メンバー)のため、node1 が落ちると API サーバーは
-  止まる(node2 上の Pod は動き続ける)。etcd スナップショットの定期取得が
-  必須で、node1 の全損はバックアップからの復旧になる。2台構成では
-  2台とも control-plane にしても etcd のクォーラム(過半数)は 1台障害で
-  失われるため冗長性は得られず、あえて 1 CP + 1 worker にしている。
-  kube-vip の VIP は「固定の API アドレス(Cilium の `k8sServiceHost` と
-  `controlPlaneEndpoint`)」と将来の CP 追加余地のために置いてあり、
-  フェイルオーバー目的ではない。
+<Callout title="HA なのは site1 だけ">
+  site1 は etcd が 3メンバーなので 1台落ちてもクォーラムが残り、kube-vip の
+  VIP(`10.200.1.10`)が生きている CP に移る。ストレージも Longhorn の 3レプリカで
+  1台障害に耐える。site2 は control-plane が 1台(etcd 1メンバー)のため node1 が
+  落ちると API は止まる(node2 上の Pod は動き続ける)。どちらも etcd スナップショットの
+  定期取得は必要で、site2 の node1 全損はバックアップからの復旧になる。
 </Callout>
 
 <Callout title="LAN は DHCP のまま、クラスタ用の第 2 サブネットを重ねる">
@@ -57,7 +54,7 @@ graph TB
   ルーターと無関係なサブネット(`cluster_lan_cidr` = `10.200.<site>.0/24`)の
   固定アドレス(`lan_address`)を LAN NIC に**追加**し、クラスタはそのアドレス
   だけを使う。DHCP で貰うアドレスはインターネット向け(wg のエンドポイント)に
-  そのまま残す。同じスイッチ配下の 2 台は直接 ARP で通信できるので、ルーターの
+  そのまま残す。同じスイッチ配下のノードは直接 ARP で通信できるので、ルーターの
   設定も DHCP プールの範囲も関係ない。前提は「2 台が同じルーター/スイッチの
   有線ポートにつながっている」ことだけ(詳細は `/docs/architecture/wireguard`)。
 </Callout>

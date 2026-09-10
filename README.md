@@ -1,6 +1,6 @@
 # moripa-infra
 
-自宅サーバー4台(2拠点 × 2台) + Linode Nanode(踏み台/出口ゲートウェイ/リバースプロキシ) のインフラ管理モノレポ。
+自宅サーバー(site1: 3台、site2: 2台) + Linode Nanode(踏み台/出口ゲートウェイ/リバースプロキシ) のインフラ管理モノレポ。
 
 - **Terraform**: Linode リソース(Nanode, Firewall)のプロビジョニング
 - **Ansible**: Linode + 4台のサーバーの構成管理(WireGuard, Caddy, k8s ブートストラップ)
@@ -8,7 +8,7 @@
 
 ## 構成概要
 
-**2拠点構成**。各拠点が独立した k8s クラスタ(node1 = control-plane、node2 = worker)
+**2拠点構成**。各拠点が独立した k8s クラスタ(site1 は 3台とも control-plane、site2 は node1 = control-plane、node2 = worker)
 と独立した ArgoCD を持つ。障害ドメインは完全に分離され、拠点間にクラスタの依存はない。
 
 ```
@@ -18,9 +18,10 @@
       │ wg0 (hub-and-spoke)
       │
       ├─ site1 (クラスタ用 10.200.1.0/24, VIP .10)   ├─ site2 (クラスタ用 10.200.2.0/24, VIP .10)
-      │   ├── site1-node1 (10.100.0.11) CP ┐ k8s  │   ├── site2-node1 (10.100.0.21) CP ┐ k8s
-      │   └── site1-node2 (10.100.0.12) wk ┘      │   └── site2-node2 (10.100.0.22) wk ┘
-      │      (kubeadm + Cilium + ArgoCD)          │      (kubeadm + Cilium + ArgoCD)
+      │   ├── site1-node1 (10.100.0.11) CP ┐      │   ├── site2-node1 (10.100.0.21) CP ┐ k8s
+      │   ├── site1-node2 (10.100.0.12) CP ┤ k8s  │   └── site2-node2 (10.100.0.22) wk ┘
+      │   └── site1-node3 (10.100.0.13) CP ┘      │      (kubeadm + Cilium + ArgoCD)
+      │      (kubeadm + Cilium + Longhorn + ArgoCD)
 ```
 
 - 各ノードの**外向き通信は Linode 経由**(フルトンネル)。外部からは Linode の固定IPに見える
@@ -65,6 +66,7 @@ moripa-infra/
 │   │   ├── reverse_proxy/      # Linode 上の Caddy(gateway/caddy/Caddyfile を git から取り込む)
 │   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort)
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
+│   │   ├── longhorn_prereq/    # /data LV(VG の残り全部), iscsid, nfs-common, multipathd 停止
 │   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
 │   └── playbooks/              # site.yml = gateway.yml + cluster.yml
 ├── kubernetes/                 # 各拠点の ArgoCD が watch する領域
@@ -83,6 +85,7 @@ moripa-infra/
 │       │   ├── infrastructure/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
 │       │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Caddy 側)
+│       │   │   ├── storage/            # Longhorn の values + UI の HTTPRoute(private ホスト名)
 │       │   │   └── monitoring/
 │       │   └── apps/               # 個別アプリの Application(当面は空。Minecraft は後回し)
 │       └── site2/              # site1 と同構造
@@ -117,9 +120,10 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | 項目 | 値 | 備考 |
 |---|---|---|
 | ノードの OS | Ubuntu 26.04.1 LTS server | 確定 |
-| 拠点構成 | 2拠点 × 2台、拠点ごとに独立クラスタ | node1 = control-plane(stacked etcd・schedulable)、node2 = worker。API VIP は kube-vip(固定アドレス目的。CP 1台なので HA ではない) |
+| 拠点構成 | site1 3台 / site2 2台、拠点ごとに独立クラスタ | site1 は 3台とも control-plane(stacked etcd 3メンバー、全ノード schedulable、kube-vip の VIP でフェイルオーバー)。site2 は node1 = control-plane、node2 = worker(HA ではない) |
 | ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が第 2 サブネットの固定アドレス(`lan_address`)を LAN NIC に追加する |
-| クラスタ用サブネット | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | `cluster_lan_cidr`。node1 `.11`、node2 `.12`、VIP `.10`。実際の LAN と被ったら変更 |
+| クラスタ用サブネット | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | `cluster_lan_cidr`。node<N> は `.1N`、VIP `.10`。実際の LAN と被ったら変更 |
+| ストレージ | Longhorn(site1、3レプリカ、既定 StorageClass) | ノードの残りディスクを `/data` LV にして `/data/longhorn` を使う。hostPath / local-path も `/data` 配下 |
 | ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |

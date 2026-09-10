@@ -133,6 +133,20 @@ check(
     f"gateway-api-crds が {versions['gateway_api_version']} を参照していない",
 )
 
+# --- longhorn App targetRevision ↔ versions.yml -------------------------------
+for site in SITES:
+    app_path = ROOT / f"kubernetes/sites/{site}/bootstrap/applications/storage.yaml"
+    if not app_path.exists():
+        continue
+    app = yaml.safe_load(app_path.read_text())
+    chart_rev = next(
+        s["targetRevision"] for s in app["spec"]["sources"] if s.get("chart") == "longhorn"
+    )
+    check(
+        chart_rev == versions["longhorn_version"],
+        f"[{site}] longhorn App targetRevision={chart_rev} != longhorn_version={versions['longhorn_version']}",
+    )
+
 # --- tcp_routes + proxy_public_ports ↔ terraform public_tcp_ports -------------
 proxy_ports = {int(p) for p in network["proxy_public_ports"]}
 tcp_routes = network.get("tcp_routes") or []

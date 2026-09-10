@@ -106,6 +106,11 @@ lint-helm: ## Cilium values (common + 各 site) が chart に対して有効か�
 	    -f kubernetes/sites/$$s/infrastructure/cilium/values.yaml > /dev/null \
 	    && echo "cilium values OK ($$s)" || exit 1; \
 	done
+	@lv=$$(grep -oP 'longhorn_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	kv=$$(grep -oP 'k8s_full_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	helm template longhorn longhorn --repo https://charts.longhorn.io --version $$lv -n longhorn-system \
+	  --kube-version $$kv -f kubernetes/sites/site1/infrastructure/storage/longhorn-values.yaml > /dev/null \
+	  && echo "longhorn values OK (site1)" || exit 1
 
 # Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取る(ハブと同じもの)。
 # generated.caddy(Ansible 生成)を手元にレンダリングし、git の gateway/caddy/Caddyfile と
@@ -136,6 +141,7 @@ KUSTOMIZE_DIRS := \
   kubernetes/sites/site1/bootstrap/argocd \
   kubernetes/sites/site1/bootstrap/applications \
   kubernetes/sites/site1/infrastructure/ingress \
+  kubernetes/sites/site1/infrastructure/storage \
   kubernetes/sites/site1/infrastructure/monitoring \
   kubernetes/sites/site1/apps \
   kubernetes/sites/site2/bootstrap/argocd \

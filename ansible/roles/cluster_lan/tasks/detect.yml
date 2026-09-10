@@ -12,12 +12,12 @@
     executable: /bin/bash
   register: cluster_lan_route
   changed_when: false
-  when: not lan_interface
+  when: not (lan_interface | default(''))
 
 - name: cluster_lan_interface を確定
   ansible.builtin.set_fact:
     cluster_lan_interface: >-
-      {{ lan_interface if lan_interface
+      {{ lan_interface if (lan_interface | default(''))
          else (cluster_lan_route.stdout.split() | list)[(cluster_lan_route.stdout.split() | list).index('dev') + 1] }}
 
 - name: LAN NIC が wg0 でないことを確認

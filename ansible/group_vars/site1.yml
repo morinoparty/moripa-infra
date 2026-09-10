@@ -4,6 +4,8 @@ site_name: site1
 # ノード同士は直接 ARP で通信できる)。実際の LAN がたまたま 10.200.x.x なら変更すること。
 # inventory の lan_address はこの CIDR 内(check-consistency が検査)
 cluster_lan_cidr: 10.200.1.0/24
+# LAN NIC(3 台とも同型: enp12s0 が配線済み、enp11s0 は未接続)。cilium values の devices も同じ
+lan_interface: enp12s0
 # kube-vip の VIP(cluster_lan_cidr 内。ARP mode で LAN NIC に張る)。
 # cilium values の k8sServiceHost と一致させる(check-consistency が検査)
 kube_vip_address: 10.200.1.10

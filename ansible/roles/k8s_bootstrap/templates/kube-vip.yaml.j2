@@ -10,6 +10,13 @@ metadata:
   namespace: kube-system
 spec:
   hostNetwork: true
+  # kube-vip 0.8 以降は kubeconfig の server を https://kubernetes:6443 に置き換えて
+  # 接続するため、"kubernetes" をローカルの API に向ける hostAliases が必須
+  # (無いと "lookup kubernetes" で leader election が始まらず VIP が上がらない)
+  hostAliases:
+    - ip: 127.0.0.1
+      hostnames:
+        - kubernetes
   containers:
     - name: kube-vip
       image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}

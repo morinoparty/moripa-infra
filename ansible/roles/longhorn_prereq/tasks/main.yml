@@ -1,0 +1,100 @@
+# Longhorn の前提をノードに入れる(docs: https://longhorn.io/docs/1.12.1/deploy/install/#installation-requirements)
+#   - データ用 LV(VG の空き全部)を data_mount にマウント。Longhorn の disk は longhorn_data_path
+#   - open-iscsi(iscsid を起動)、iscsi_tcp モジュール、nfs-common(RWX 用)
+#   - multipathd は Longhorn のデバイスを掴んで壊すので止める(公式 KB)
+# 空きが無い VG や LV 作成済みのノードでは LV 作成をスキップする(冪等)
+
+- name: LVM の VG を確認
+  ansible.builtin.command: vgs --noheadings --units g --nosuffix -o vg_free {{ data_vg }}
+  register: longhorn_prereq_vgfree
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: 既存の LV を確認
+  ansible.builtin.stat:
+    path: "/dev/{{ data_vg }}/{{ data_lv }}"
+  register: longhorn_prereq_lv
+  become: true
+
+- name: データ用 LV を VG の空き全部で作成
+  community.general.lvol:
+    vg: "{{ data_vg }}"
+    lv: "{{ data_lv }}"
+    size: 100%FREE
+    shrink: false
+  become: true
+  when:
+    - longhorn_prereq_vgfree.rc == 0
+    - not longhorn_prereq_lv.stat.exists
+    - (longhorn_prereq_vgfree.stdout | trim | float) > 1
+
+- name: データ用 LV の存在を再確認
+  ansible.builtin.stat:
+    path: "/dev/{{ data_vg }}/{{ data_lv }}"
+  register: longhorn_prereq_lv
+  become: true
+
+- name: データ用 LV を ext4 でフォーマット(未フォーマット時のみ)
+  community.general.filesystem:
+    fstype: ext4
+    dev: "/dev/{{ data_vg }}/{{ data_lv }}"
+    opts: -L data
+  become: true
+  when: longhorn_prereq_lv.stat.exists
+
+- name: データ用 LV をマウント(fstab 登録)
+  ansible.posix.mount:
+    path: "{{ data_mount }}"
+    src: "/dev/{{ data_vg }}/{{ data_lv }}"
+    fstype: ext4
+    opts: defaults,noatime
+    state: mounted
+  become: true
+  when: longhorn_prereq_lv.stat.exists
+
+- name: Longhorn のディスクディレクトリ
+  ansible.builtin.file:
+    path: "{{ longhorn_data_path }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: open-iscsi / nfs-common を導入
+  ansible.builtin.apt:
+    name: [open-iscsi, nfs-common]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: iscsi_tcp モジュールを常時ロード
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/longhorn.conf
+    content: |
+      iscsi_tcp
+    mode: "0644"
+  become: true
+
+- name: iscsi_tcp モジュールを即時ロード
+  community.general.modprobe:
+    name: iscsi_tcp
+    state: present
+  become: true
+
+- name: iscsid を有効化・起動
+  ansible.builtin.systemd_service:
+    name: iscsid
+    enabled: true
+    state: started
+  become: true
+
+- name: multipathd を停止・無効化(Longhorn のブロックデバイスを掴ませない)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+    masked: true
+  loop: [multipathd.socket, multipathd.service]
+  become: true
+  failed_when: false

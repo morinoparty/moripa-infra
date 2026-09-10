@@ -1,0 +1,34 @@
+# site1 の Longhorn 設定(charts.longhorn.io の longhorn chart)。
+# ノード側の前提(データ用 LV を /data、iscsid、nfs-common)は
+# ansible/roles/longhorn_prereq が用意する。
+# ArgoCD 経由なので pre-upgrade checker の Job は無効(chart の注記どおり)
+preUpgradeChecker:
+  jobEnabled: false
+
+persistence:
+  defaultClass: true
+  # 3 ノードなので 3 レプリカ(1 台落ちてもデータが残る)
+  defaultClassReplicaCount: 3
+  reclaimPolicy: Delete
+
+defaultSettings:
+  # ansible の longhorn_data_path と一致させる(ルートとは別 LV)
+  defaultDataPath: /data/longhorn
+  defaultReplicaCount: 3
+  # 専用 LV なので予約は少なめ(既定 30%)
+  storageReservedPercentageForDefaultDisk: 10
+  storageMinimalAvailablePercentage: 10
+  # ノードが落ちたときは Pod を消して別ノードで作り直させる(local-path との違いはここ)
+  nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+  # 小さいノードなので instance-manager の CPU 予約は控えめ(既定 12%)
+  guaranteedInstanceManagerCPU: 5
+  upgradeChecker: false
+  allowCollectingLonghornUsageMetrics: false
+  deletingConfirmationFlag: false
+
+longhornUI:
+  replicas: 1
+
+# 認証は Caddy 側の oauth2-proxy(*.private.dev)。chart の ingress は使わず HTTPRoute で公開
+ingress:
+  enabled: false

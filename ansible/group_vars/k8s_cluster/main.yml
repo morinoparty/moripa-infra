@@ -1,10 +1,9 @@
 wg_role: spoke
 ansible_user: "{{ admin_user }}"
 
-# LAN NIC 名。空なら roles/cluster_lan/tasks/detect.yml が main テーブルの
-# default route から自動検出する(フルトンネル下では ansible_default_ipv4 が
-# wg0 を返すので使わない)。NIC 名が確定したら "enp1s0" 等で固定推奨
-lan_interface: ""
+# LAN NIC 名(lan_interface)は拠点ごとに group_vars/site<N>.yml で固定する。
+# 未指定なら roles/cluster_lan/tasks/detect.yml が main テーブルの default route から
+# 自動検出する(フルトンネル下では ansible_default_ipv4 が wg0 を返すので使わない)
 
 # kube-vip が VIP を張る NIC(= 検出した LAN NIC。wg0 は不可)
 kube_vip_interface: "{{ cluster_lan_interface }}"
@@ -18,3 +17,12 @@ kube_vip_interface: "{{ cluster_lan_interface }}"
 # ansible_password / ansible_become_password(現地作業者に渡した moripa の
 # パスワード)を置く。base ロールが鍵と NOPASSWD を配った後も残して害はない。
 # 管理機には sshpass が必要(docs/content/docs/admin/ansible.mdx)
+
+# ノードのデータ領域(roles/longhorn_prereq)。Ubuntu の既定インストールはルート LV が
+# 100GB で残りの VG が未使用なので、残り全部で LV を切って /data にマウントする。
+# Longhorn は /data/longhorn、hostPath / local-path を使うときも /data 配下に置く
+# (ルートと分離されるのでボリュームが肥大化しても OS が詰まらない)
+data_vg: ubuntu-vg
+data_lv: data
+data_mount: /data
+longhorn_data_path: "{{ data_mount }}/longhorn"

@@ -37,6 +37,9 @@ Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrade
 
 現地で OS を入れた直後のノードには SSH 鍵も sudo の NOPASSWD も無いため、
 初回の `make cluster` は現地作業者に渡した `moripa` のパスワードで接続する。
+Ubuntu 25.10 以降の sudo は sudo-rs でプロンプトの形が違い Ansible の become が
+そのままでは通らないため、`base` ロールの先頭で同じパスワードを stdin から渡して
+NOPASSWD の sudoers を先に書く(2 回目以降は何もしない)。
 `ansible/group_vars/k8s_cluster/bootstrap.sops.yml`(example をコピーして
 `sops -e -i`)に `ansible_password` / `ansible_become_password` を置くと
 Ansible が自動で使う。管理機には `sshpass` が必要。`base` ロールが鍵と
@@ -56,16 +59,15 @@ NOPASSWD を配った後はパスワードは使われないが、ファイル�
 
 | ノード | 役割 | wg アドレス(管理) | lan_address(クラスタ) |
 |---|---|---|---|
-| site1-node1 / node2 | control-plane / worker | 10.100.0.11 / .12 | 10.200.1.11 / .12(VIP .10) |
+| site1-node1 / node2 / node3 | control-plane ×3 | 10.100.0.11 / .12 / .13 | 10.200.1.11 / .12 / .13(VIP .10) |
 | site2-node1 / node2 | control-plane / worker | 10.100.0.21 / .22 | 10.200.2.11 / .12(VIP .10) |
 
 <Callout title="netplan apply は wg 越しに実行される" type="warn">
   `cluster_lan` は管理経路(wg)越しに `netplan apply` を実行する。
   systemd-networkd が wg-quick のポリシールールを消さないよう drop-in
-  (`ManageForeignRoutingPolicyRules=no`)を先に入れ、apply 直後にハブへの
-  ping で経路が生きていることを検査する。この手順は実機では未検証のため、
-  初回は 1 台ずつ実行し(`make cluster` には limit が無いので
-  `cd ansible && ../.venv/bin/ansible-playbook playbooks/cluster.yml --limit site1-node1`)、
+  (`ManageForeignRoutingPolicyRules=no`)を先に入れて networkd を再起動し、
+  apply 直後にハブへの ping で経路が生きていることを検査する(node-bootstrap も
+  同じ drop-in を入れる)。拠点を絞るには `make cluster ANSIBLE_ARGS='--limit site1'`。
   切れたら現地でのコンソールログインか node-bootstrap の再実行で復旧する。
   相手ノードとの疎通検証は、相手が play に含まれるときだけ行われる。
 </Callout>
@@ -76,18 +78,20 @@ NOPASSWD を配った後はパスワードは使われないが、ファイル�
 flowchart TD
     A["共通: base + wireguard(全ノード, spoke化)"] --> A2["cluster_lan: 第 2 サブネットのアドレスを LAN NIC に追加(全ノード)"]
     A2 --> B["k8s_prereq: containerd / kubeadm 導入(全ノード)"]
-    B --> C["site1 control-plane 構築(node1: kubeadm init)"]
+    B --> B2["longhorn_prereq: /data LV / iscsid / nfs-common(全ノード)"]
+    B2 --> C["site1 control-plane 構築(node1: kubeadm init → node2, node3 が join、serial 1)"]
     C --> D["site2 control-plane 構築(node1: kubeadm init)"]
-    D --> E["worker join(各拠点の node2)"]
+    D --> E["worker join(site2 の node2)"]
     E --> F["Cilium 投入 + 検証(site1・site2 それぞれの先頭ノード)"]
 ```
 
 `ansible/playbooks/cluster.yml` の実際のプレイ構成に対応する。site1 と
 site2 は独立クラスタなので、それぞれの control-plane 構築は互いに依存しない。
-各拠点の control-plane は node1 の 1台で、`kubeadm init` 後に node2 が
-worker として join する(`serial: 1` は将来 CP を追加したときに etcd メンバー
-追加の同時実行を避けるためのもの)。Cilium の投入は両拠点の control-plane に
-対して最後にまとめて行う。
+site1 は 3台とも control-plane で、node1 の `kubeadm init` のあと node2・node3 が
+`--control-plane` で順に join する(`serial: 1` で etcd メンバー追加の同時実行を
+避ける)。site2 は node1 の 1台で、node2 が worker として join する。Cilium の投入は
+両拠点の先頭 control-plane に対して最後にまとめて行う。Longhorn 本体は Ansible では
+入れず、ArgoCD bootstrap 後に `longhorn` Application が入れる(`/docs/admin/argocd`)。
 
 worker の join タスクは join トークンを隠すため `no_log` になっており、失敗時に
 エラーの詳細が出ない。失敗したら該当ノードで `journalctl -u kubelet` を見るか、
@@ -108,7 +112,7 @@ make cluster
 - ✅ 同一拠点の他ノードの `lan_address` へ `ping` が通り、`ip route get` が
   LAN NIC を返す(**クラスタ内通信は LAN 直通**。詳細は
   `/docs/architecture/wireguard`)
-- ✅ `ip rule` に priority 100 の除外ルール(cluster_lan / Pod / Service CIDR)が3本
+- ✅ `ip rule` に priority 200 の除外ルール(cluster_lan / Pod / Service CIDR)が3本(Cilium が local テーブルを pref 100 へ動かすため、それより後ろ)
 
 ### クラスタ Ready(拠点ごとに確認)
 

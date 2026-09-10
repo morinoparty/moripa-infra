@@ -25,3 +25,7 @@ caddy_cloudflare_module_version: "v0.2.4"
 # oauth2-proxy(GitHub Releases の linux-amd64 tarball と sha256)
 oauth2_proxy_version: "v7.15.4"
 oauth2_proxy_sha256: "4fbe902189aab713d9c0519b90a645032d4636ecb523dc36f5cc312d8ebef1e2"
+
+# Longhorn(charts.longhorn.io。kubernetes/sites/*/bootstrap/applications/storage.yaml の
+# targetRevision と一致させる。check-consistency が検査)
+longhorn_version: "1.12.1"

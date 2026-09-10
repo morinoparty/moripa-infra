@@ -28,6 +28,7 @@ kubernetes/
     │   ├── infrastructure/
     │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
     │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Linode の Caddy)
+    │   │   ├── storage/            # Longhorn の values + UI の HTTPRoute
     │   │   └── monitoring/
     │   └── apps/               # 個別アプリの Application(当面は空)
     └── site2/              # site1 と同構造
@@ -54,10 +55,11 @@ graph LR
 | -2 | `cilium` | CNI。すべてのPod通信の前提 |
 | -1 | `cert-manager` | クラスタ内部向け証明書の仕組み(公開サービスの TLS は Linode 上の Caddy が終端するため必須ではない) |
 | 0 | `ingress` | Cilium Gateway API(hostNetwork、:80。Caddy からの転送を受ける) |
+| 0 | `longhorn` | 分散ブロックストレージ(既定 StorageClass)。chart は charts.longhorn.io、values と HTTPRoute は git(multi-source)。`prune: false` |
 | 1 | `monitoring` | 監視 |
 | 2 | `apps` | 個別アプリ(当面は空。Minecraft は後回し) |
 
-`root` と `cilium` の Application は `prune: false`(誤削除防止 / CNI破壊防止)。
+`root`・`cilium`・`longhorn` の Application は `prune: false`(誤削除防止 / CNI 破壊防止 / ボリューム消失防止)。
 
 ## Cilium: common + site の2層構成と Ansible との共有
 

@@ -1,3 +1,28 @@
+# Ubuntu 25.10+ の sudo は sudo-rs で、パスワードプロンプトが
+# "[sudo: <ansible の prompt>] Password:" と包まれるため Ansible の become が
+# プロンプトを検出できずタイムアウトする。become を使う前に、初回接続用パスワードで
+# NOPASSWD の sudoers を書いておく(以降は prompt が出ないので become が通る)。
+# 既に NOPASSWD なら何もしない。パスワードは stdin で渡す(コマンドラインに出さない)
+- name: sudo が NOPASSWD かを確認
+  ansible.builtin.command: sudo -n true
+  register: base_sudo_nopasswd
+  changed_when: false
+  failed_when: false
+  become: false
+
+- name: sudo NOPASSWD を先行設定(sudo-rs 対応、初回のみ)
+  ansible.builtin.shell:
+    cmd: >-
+      sudo -S -p '' sh -c
+      "printf '%s ALL=(ALL) NOPASSWD:ALL\n' '{{ admin_user }}' > /etc/sudoers.d/90-{{ admin_user }}
+      && chmod 0440 /etc/sudoers.d/90-{{ admin_user }}"
+    stdin: "{{ ansible_become_password }}\n"
+  when:
+    - base_sudo_nopasswd.rc != 0
+    - ansible_become_password is defined
+  no_log: true
+  become: false
+
 - name: 管理ユーザーを作成
   ansible.builtin.user:
     name: "{{ admin_user }}"

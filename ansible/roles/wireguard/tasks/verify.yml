@@ -10,7 +10,7 @@
   become: true
 
 - name: main テーブル除外の ip rule が存在することを確認
-  ansible.builtin.command: ip rule show priority 100
+  ansible.builtin.command: ip rule show priority 200
   register: wireguard_rule_check
   changed_when: false
   failed_when: >-

@@ -3,3 +3,9 @@
 # この拠点の kube-vip VIP(cluster_lan_cidr 内。kube-proxy 不在でも API へ到達する
 # ための直指定。group_vars/site1.yml の kube_vip_address と一致させる)
 k8sServiceHost: 10.200.1.10
+
+# LAN NIC を実名で固定(common の "e+" は未接続の enp11s0 にも一致するため)。
+# group_vars/site1.yml の lan_interface と一致させる
+devices:
+  - enp12s0
+  - wg0

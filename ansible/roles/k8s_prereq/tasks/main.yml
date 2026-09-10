@@ -52,6 +52,14 @@
     cache_valid_time: 3600
   become: true
 
+# Ubuntu 26.04 の containerd パッケージは /etc/containerd を作らない
+- name: containerd の設定ディレクトリ
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: "0755"
+  become: true
+
 - name: containerd config (v3) を配布
   ansible.builtin.template:
     src: containerd-config.toml.j2

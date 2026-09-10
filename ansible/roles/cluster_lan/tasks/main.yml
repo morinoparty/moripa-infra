@@ -36,6 +36,21 @@
       ManageForeignRoutes=no
     mode: "0644"
   become: true
+  register: cluster_lan_networkd_dropin
+
+# netplan apply は networkd.conf.d を読み直さない。旧設定のまま NIC を再設定させると
+# wg-quick の fwmark ルールが消えて管理経路(wg)が切れるので、先に networkd を再起動する
+- name: systemd-networkd を再起動して drop-in を反映
+  ansible.builtin.systemd_service:
+    name: systemd-networkd
+    state: restarted
+  become: true
+  when: cluster_lan_networkd_dropin.changed
+
+- name: wg-quick の fwmark ルールが残っていることを確認
+  ansible.builtin.shell: ip rule | grep -q 'not from all fwmark'
+  changed_when: false
+  become: true
 
 - name: netplan に第 2 サブネットのアドレスを追加
   ansible.builtin.template:

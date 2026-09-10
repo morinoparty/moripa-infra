@@ -20,9 +20,14 @@
   roles:
     - k8s_prereq
 
-# 各拠点の control-plane は現状 1台(node1)。将来 CP を追加する場合も
-# serial: 1 で先頭 CP の init 完了後に残りが順に join する
-# (etcd メンバー追加の同時実行を避ける)。拠点ごとに独立したクラスタ
+- name: Longhorn 前提(データ用 LV / iscsid / nfs-common)(全拠点)
+  hosts: k8s_cluster
+  force_handlers: true
+  roles:
+    - longhorn_prereq
+
+# control-plane は serial: 1 で先頭 CP の init 完了後に残りが順に join する
+# (etcd メンバー追加の同時実行を避ける)。site1 は 3 台とも CP。拠点ごとに独立したクラスタ
 - name: site1 control-plane を構築
   hosts: site1_control_plane
   # 途中で失敗しても notify 済みの handler(nftables reload 等)を必ず実行する
@@ -43,7 +48,7 @@
       vars:
         k8s_bootstrap_mode: control_plane
 
-- name: worker を join(各拠点の node2)
+- name: worker を join(site1 は現状なし、site2 は node2)
   hosts: site1_workers:site2_workers
   # 途中で失敗しても notify 済みの handler(nftables reload 等)を必ず実行する
   force_handlers: true

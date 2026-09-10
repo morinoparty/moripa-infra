@@ -47,8 +47,12 @@ envoy:
   securityContext:
     capabilities:
       keepCapNetBindService: true
+      # chart 既定の NET_ADMIN + SYS_ADMIN(BPF datapath 連携に必須。無いと envoy が
+      # "CAP_NET_ADMIN and either CAP_SYS_ADMIN or CAP_BPF ... needed" で CrashLoop)に、
+      # hostNetwork で :80 を bind するための NET_BIND_SERVICE を足す
       envoy:
         - NET_ADMIN
+        - SYS_ADMIN
         - NET_BIND_SERVICE
 
 operator:

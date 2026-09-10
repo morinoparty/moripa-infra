@@ -64,6 +64,10 @@ jobs:
               -f kubernetes/common/cilium/values.yaml \
               -f "kubernetes/sites/$s/infrastructure/cilium/values.yaml" > /dev/null
           done
+          lv=$(grep -oP 'longhorn_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
+          kv=$(grep -oP 'k8s_full_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
+          helm template longhorn longhorn --repo https://charts.longhorn.io --version "$lv" --kube-version "$kv" \
+            -n longhorn-system -f kubernetes/sites/site1/infrastructure/storage/longhorn-values.yaml > /dev/null
 
       - name: kustomize build(secrets/ksops を含む overlay は対象外)
         run: |
@@ -73,6 +77,7 @@ jobs:
                    kubernetes/sites/site1/bootstrap/argocd \
                    kubernetes/sites/site1/bootstrap/applications \
                    kubernetes/sites/site1/infrastructure/ingress \
+                   kubernetes/sites/site1/infrastructure/storage \
                    kubernetes/sites/site1/infrastructure/monitoring \
                    kubernetes/sites/site1/apps \
                    kubernetes/sites/site2/bootstrap/argocd \

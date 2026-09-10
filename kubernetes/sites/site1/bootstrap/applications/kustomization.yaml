@@ -5,5 +5,6 @@ resources:
   - cilium.yaml
   - cert-manager.yaml
   - ingress.yaml
+  - storage.yaml
   - monitoring.yaml
   - apps.yaml

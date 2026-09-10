@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+data:
+  # TLS は Linode の Caddy が終端し、Gateway → argocd-server は HTTP。
+  # これが無いと argocd-server が HTTPS へリダイレクトしてループする
+  server.insecure: "true"

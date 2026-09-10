@@ -18,6 +18,19 @@ KUBECONFIG=~/kube/site1 make bootstrap-argocd SITE=site1
 KUBECONFIG=~/kube/site2 make bootstrap-argocd SITE=site2
 ```
 
+## UI へのアクセス
+
+site1 の ArgoCD は `https://argocd.site1.dev.morino.party/` で開ける(HTTPRoute は
+`kubernetes/sites/site1/bootstrap/argocd/httproute.yaml`、TLS は Linode の Caddy が終端し
+argocd-server は `server.insecure: "true"` で HTTP 待ち受け)。ArgoCD 自身のログインが
+あるため公開側(`dev`)のホスト名にしてある。初期パスワードは
+`kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`
+で取り、ログイン後に変更して Secret を削除する。CLI は
+`argocd login argocd.site1.dev.morino.party --grpc-web`。
+
+ArgoCD 本体の overlay(`bootstrap/argocd/`)は Application では管理していないので、
+変更したら `kubectl apply -k kubernetes/sites/site1/bootstrap/argocd` を再実行する。
+
 ## 内部で行われること
 
 ```mermaid
@@ -62,6 +75,7 @@ Secret は不要。
 | -2 | `cilium` | Cilium(Ansible の Helm リリースを引き取る) |
 | -1 | `cert-manager` | cert-manager(クラスタ内部向け。公開 TLS は Linode の Caddy) |
 | 0 | `ingress` | Cilium Gateway API(hostNetwork :80、Caddy からの転送を受ける) |
+| 0 | `longhorn` | Longhorn(既定 StorageClass。site1 のみ) |
 | 1 | `monitoring` | 監視 |
 | 2 | `apps` | 第2の app-of-apps(`kubernetes/sites/<site>/apps/`) |
 
@@ -81,7 +95,27 @@ Ansible が入れた Cilium の Helm リリースをそのまま ArgoCD が引�
 - **`cilium` Application の diff がゼロ**であること。diff が出る場合は
   values の乖離が疑われるため `make check-consistency` を実行する
 
-<Callout title="cilium Application は prune しない">
-  CNI を誤って削除するとクラスタ全体が壊れるため、`cilium` と `root` の
-  Application は `prune: false` にしてある(安全側)。
+<Callout title="cilium / longhorn Application は prune しない">
+  CNI を誤って削除するとクラスタ全体が壊れ、Longhorn の CRD が消えるとボリュームの
+  実データを失うため、`cilium`・`longhorn`・`root` の Application は
+  `prune: false` にしてある(安全側)。
 </Callout>
+
+## Longhorn の確認(site1)
+
+`longhorn` Application は charts.longhorn.io の chart と Git 上の
+`kubernetes/sites/site1/infrastructure/storage/longhorn-values.yaml`、同ディレクトリの
+HTTPRoute を multi-source で同期する。ノード側の前提(`/data` LV、iscsid、nfs-common)は
+`make cluster` の `longhorn_prereq` ロールが済ませている。
+
+✅ 検証:
+
+- `kubectl -n longhorn-system get pods` がすべて Running(manager / instance-manager /
+  csi-* が各ノードに載る)
+- `kubectl get storageclass` に `longhorn (default)` がある
+- `kubectl -n longhorn-system get nodes.longhorn.io` に 3 ノードが Schedulable で並び、
+  ディスクが `/data/longhorn` になっている
+- `https://longhorn.site1.private.dev.morino.party/`(oauth2-proxy のログイン後)で
+  UI が開き、3 ノードとディスクの空きが見える
+- PVC を 1 つ作って Pod から書き込み、`kubectl -n longhorn-system get volumes.longhorn.io`
+  でレプリカが 3 であることを確認したら削除する

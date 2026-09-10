@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  # 外部 URL(SSO のコールバックや UI のリンクに使う)
+  url: https://argocd.site1.dev.morino.party

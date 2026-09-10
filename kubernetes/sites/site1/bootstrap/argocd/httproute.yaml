@@ -1,0 +1,18 @@
+# ArgoCD UI / CLI(https://argocd.site1.dev.morino.party)。ArgoCD 自身のログインがあるので
+# 公開側(dev)のホスト名で出す。Gateway `public` は ingress Application が作るため、
+# bootstrap 直後は Gateway が現れるまで未接続のまま待つ
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  parentRefs:
+    - name: public
+      namespace: ingress
+  hostnames:
+    - argocd.site1.dev.morino.party
+  rules:
+    - backendRefs:
+        - name: argocd-server
+          port: 80

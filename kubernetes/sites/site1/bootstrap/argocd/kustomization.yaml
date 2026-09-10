@@ -1,5 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# ArgoCD 本体は共通ベース(拠点差分が出たらここに patch を追加)
+# ArgoCD 本体は共通ベース。site1 差分: 公開 URL と HTTPRoute
 resources:
   - ../../../../common/argocd
+  - httproute.yaml
+patches:
+  - path: argocd-cm-url-patch.yaml
+  - path: argocd-cmd-params-patch.yaml

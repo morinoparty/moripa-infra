@@ -102,11 +102,9 @@ spec:
             - configMapRef:
                 name: hermes-config
           env:
-            # 本体のモデルは OpenCode Go(定額)。OpenRouter は補助用途に残す(任意)
+            # 本体のモデルは OpenCode Go(定額)のみ。OpenRouter のキーは Hermes には渡さない
             - name: OPENCODE_GO_API_KEY
               valueFrom: { secretKeyRef: { name: hermes-secrets, key: opencode-go-api-key } }
-            - name: OPENROUTER_API_KEY
-              valueFrom: { secretKeyRef: { name: hermes-secrets, key: openrouter-api-key, optional: true } }
             - name: DISCORD_BOT_TOKEN
               valueFrom: { secretKeyRef: { name: hermes-secrets, key: discord-bot-token, optional: true } }
             - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME

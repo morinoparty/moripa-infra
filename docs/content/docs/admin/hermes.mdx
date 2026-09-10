@@ -32,7 +32,7 @@ SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey sops kubernetes/sites/site1/apps/herme
 | キー | 中身 | 出どころ |
 |---|---|---|
 | `opencode-go-api-key`(両 Secret) | OpenCode Go の API キー | opencode.ai の Go サブスクリプション |
-| `openrouter-api-key`(両 Secret) | OpenRouter の API キー(embeddings 用。Hermes 側は任意) | openrouter.ai |
+| `openrouter-api-key`(`honcho-secrets` のみ) | Honcho 専用の OpenRouter キー(embeddings 用)。Hermes には渡さない | openrouter.ai |
 | `discord-bot-token` | Discord bot のトークン(無ければ Discord ゲートウェイは無効) | Discord Developer Portal |
 | `dashboard-username` / `dashboard-password` | ダッシュボードの basic 認証 | 生成済み(`~/keys/hermes-dashboard.password`) |
 | `searxng-secret` / `postgres-password` / `db-connection-uri` | 内部用 | 生成済み |

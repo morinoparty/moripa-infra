@@ -25,7 +25,8 @@ Linode 上に `base` ロール(ユーザー・sshd・sysctl・unattended-upgrade
 
 - `wg show` で peer が5台分(4ノード + 管理者マシン)登録されている
 - `nft list ruleset` で masquerade / MSS clamp / `iifname "wg0" oifname "wg0" accept`
-  と、input chain の `tcp dport { 80, 443 } accept`・`tcp dport 25565 accept` が入っている
+  と、input chain の `tcp dport { 80, 443 } accept` が入っている(`tcp_routes` を足せば
+  その port の accept も並ぶ)
 - `systemctl status caddy caddy-gitops.timer` が active。`caddy version` が
   `versions.yml` の `caddy_version`、`caddy list-modules | grep cloudflare` が出る。
   `journalctl -u caddy` に 5 枚のワイルドカード証明書の取得ログ(`certificate obtained`)
@@ -129,10 +130,10 @@ control-plane が 1台のため、node1 の全損に備えて etcd スナップ�
 
 ### 公開経路の確認
 
-- ✅ HAProxy: 外部から `nc -vz <linode_ip> 25565` が通る(Minecraft デプロイ後。
-  `allowed_sources` を設定済みなら Velocity のホストから)。
+- ✅ HAProxy: `tcp_routes` を足したあと、外部から `nc -vz <linode_ip> <port>` が通る
+  (`allowed_sources` を設定済みならそのホストから)。
   `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
-  で backend の両ノードが UP
+  で backend の両ノードが UP。`tcp_routes` が空のうちは listen も backend も無い
 - ✅ Caddy: 規約に沿った名前(例 `test.site1.dev.morino.party`)で
   `curl -v https://<host>` が対象拠点の Gateway に届く(HTTPRoute 未作成なら
   Envoy の 404 が返るのが正常)。DNS 反映前は証明書が無いので HTTPS は

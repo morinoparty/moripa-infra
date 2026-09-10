@@ -13,7 +13,7 @@
 
 ```
 [インターネット]
-      │ 80/443 → Caddy(L7, TLS 終端) / 25565 → HAProxy(L4)
+      │ 80/443 → Caddy(L7, TLS 終端) / L4 は HAProxy(tcp_routes、当面なし)
 [Linode Nanode]  ← WireGuard ハブ / 出口 / リバースプロキシ (10.100.0.1)
       │ wg0 (hub-and-spoke)
       │
@@ -31,7 +31,7 @@
   → 詳細は [docs/content/docs/architecture/wireguard.mdx](docs/content/docs/architecture/wireguard.mdx)
 - 拠点間はクラスタレベルで**接続しない**(→ [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx))
 - HTTP/HTTPS の公開は Linode 上の **Caddy** がホスト名ごとに対象拠点のノードへ転送(TLS 終端・ノード障害時の自動切替)。
-  Minecraft など L4 のサービスは **HAProxy** が対象拠点の NodePort へ転送(前段の Velocity がプレイヤー IP を渡す)
+  HTTP 以外(将来の Minecraft など)は **HAProxy** が対象拠点の NodePort へ転送する仕組みを用意してある(`tcp_routes`、当面は空)
 - 各拠点の control-plane は 1台(etcd 1メンバー)なので **HA ではない**。etcd バックアップが前提
 
 ## ディレクトリ構成
@@ -84,9 +84,8 @@ moripa-infra/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
 │       │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Caddy 側)
 │       │   │   └── monitoring/
-│       │   └── apps/
-│       │       └── minecraft/          # NodePort(HAProxy 経由、Velocity 配下)
-│       └── site2/              # site1 と同構造(apps は空の雛形)
+│       │   └── apps/               # 個別アプリの Application(当面は空。Minecraft は後回し)
+│       └── site2/              # site1 と同構造
 ├── scripts/                    # check_consistency.py / check_secrets.sh
 ├── docs/                       # fumadocs ドキュメントサイト(Workers へ自動デプロイ)
 └── .github/workflows/ci.yml    # make lint 相当の CI
@@ -124,7 +123,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
-| 外部公開ポート | Minecraft 25565、HTTP/HTTPS 80/443 | 25565 は HAProxy(`tcp_routes`、Velocity 配下)、80/443 は Caddy(`gateway/caddy/Caddyfile`。`*.site<N>.dev.morino.party` → 拠点、`*.site<N>.private.dev.morino.party` は oauth2-proxy 認証)。SSH は公開せず wg 経由のみ |
+| 外部公開ポート | HTTP/HTTPS 80/443 | Caddy(`gateway/caddy/Caddyfile`。`*.site<N>.dev.morino.party` → 拠点、`*.site<N>.private.dev.morino.party` は oauth2-proxy 認証)。L4 は HAProxy(`tcp_routes`、当面は空)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## 注意: Nanode の転送量上限

@@ -38,15 +38,16 @@ kube_api_port: 6443
 
 # Linode 上の HAProxy(L4 TCP プロキシ)。Minecraft など HTTP 以外のサービスを
 # port で受け、対象拠点の全ノードの NodePort へ wg 越しに転送する(ヘルスチェック付き)。
-# クライアント実IPは L4 では届かない(Minecraft は前段の Velocity が
+# クライアント実IPは L4 では届かない(Minecraft なら前段の Velocity が
 # modern forwarding でプレイヤー IP を渡す前提)。
 # allowed_sources を指定すると nftables でその送信元だけに絞る(Velocity の IP を
 # 入れて、バックエンドへの直接接続を防ぐこと。空なら全公開)。
 # terraform/envs/prod の public_tcp_ports = tcp_routes の port + proxy_public_ports
 # であること(check-consistency で検査)
-tcp_routes:
-  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: [] }
-#  - { name: minecraft-site2, port: 25566, site: site2, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
+# 当面は空(Minecraft は最初の構築対象から外している)。HAProxy 自体は入れてあるので、
+# 行を足して make gateway + make tf-apply すれば公開できる
+tcp_routes: []
+#  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
 
 # Linode 上の Caddy(リバースプロキシ)。HTTP/HTTPS はここで受けて TLS を終端し、
 # ホスト名ごとに対象拠点の全ノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。

@@ -46,7 +46,7 @@ variable "bootstrap_ssh_cidrs" {
 }
 
 variable "public_tcp_ports" {
-  description = "外部公開する TCP ポート(nftables の DNAT 対象と一致させること)"
+  description = "外部公開する TCP ポート(ansible の proxy_public_ports + tcp_routes と一致させること)"
   type        = list(number)
-  default     = [80, 443, 25565]
+  default     = [80, 443]
 }

@@ -7,7 +7,7 @@ description: hub-and-spoke構成、フルトンネル + policy routing、第 2 �
 
 1. 4台のノードの**外向き通信を Linode の固定IPから出す**(自宅回線のIPを晒さない)
 2. 外部からのアクセスを Linode で受けてノードへ届ける(サービス公開)。
-   HTTP/HTTPS は **Caddy(L7 リバースプロキシ)**、Minecraft は **HAProxy(L4)**
+   HTTP/HTTPS は **Caddy(L7 リバースプロキシ)**、HTTP 以外(将来の Minecraft など)は **HAProxy(L4)**
 3. 管理用の踏み台経路(SSH over wg)を提供する
 4. クラスタ通信(etcd / API / kubelet / Pod の VXLAN)は**運ばない**。拠点の
    LAN で直接通信させる(下記「第 2 サブネット」)
@@ -104,12 +104,12 @@ nftables も wg0 発の 53 番だけ通す。クライアントはそのゾー�
 
 | | Caddy(`gateway/caddy/Caddyfile`) | HAProxy(`tcp_routes`) |
 |---|---|---|
-| 対象 | HTTP/HTTPS(80/443) | Minecraft 25565 など L4 のサービス |
+| 対象 | HTTP/HTTPS(80/443) | L4 のサービス(Minecraft など。当面 `tcp_routes` は空) |
 | 転送先 | ホスト名ごとに対象拠点の**全ノード** `:80`(Cilium Gateway, hostNetwork) | port ごとに対象拠点の**全ノード**の NodePort(`externalTrafficPolicy: Cluster`) |
 | ノード障害 | passive ヘルスチェックで別ノードへ自動切替 | TCP ヘルスチェックで別ノードへ自動切替 |
 | TLS | Caddy が終端(Let's Encrypt DNS-01 / Cloudflare でワイルドカード) | アプリ側 |
-| クライアント実IP | `X-Forwarded-For`(Cilium の `gatewayAPI.xffNumTrustedHops: 1` で Envoy が信頼) | 届かない。Minecraft は前段の Velocity が modern forwarding で渡す |
-| 認証 / 送信元制限 | `*.site<N>.private.dev.morino.party` は oauth2-proxy(GitHub org / MineAuth staff) | `allowed_sources`(nftables で絞る。Velocity の IP を入れる) |
+| クライアント実IP | `X-Forwarded-For`(Cilium の `gatewayAPI.xffNumTrustedHops: 1` で Envoy が信頼) | 届かない。Minecraft なら前段の Velocity が modern forwarding で渡す |
+| 認証 / 送信元制限 | `*.site<N>.private.dev.morino.party` は oauth2-proxy(GitHub org / MineAuth staff) | `allowed_sources`(nftables で送信元を絞る) |
 | 両拠点 | 1 台の Caddy で site1 / site2 を混在可 | port ごとに拠点を指定 |
 
 Caddy / HAProxy → ノードの通信はハブ自身(`10.100.0.1`)を送信元として wg0 へ
@@ -128,7 +128,7 @@ table inet filter {
     type filter hook input priority filter; policy drop;
     udp dport 51820 accept          # WireGuard
     tcp dport { 80, 443 } accept    # Caddy(ハブ自身が listen)
-    tcp dport 25565 accept          # HAProxy(allowed_sources 指定時は ip saddr で絞る)
+    # tcp_routes の port ごとに accept が入る(allowed_sources 指定時は ip saddr で絞る)
   }
   chain forward {
     type filter hook forward priority filter; policy drop;

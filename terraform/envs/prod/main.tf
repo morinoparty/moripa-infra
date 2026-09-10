@@ -23,5 +23,5 @@ variable "bootstrap_ssh_cidrs" {
 variable "public_tcp_ports" {
   description = "公開 TCP ポート(ansible の tcp_routes + proxy_public_ports と check-consistency で突合)"
   type        = list(number)
-  default     = [80, 443, 25565]
+  default     = [80, 443]
 }

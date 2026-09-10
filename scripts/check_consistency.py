@@ -2,7 +2,7 @@
 """設定値の乖離を検査する。
 
 単一ソース(ansible/group_vars/)と、それを写した各所
-(cilium values / ArgoCD Application / terraform / minecraft / Caddy)の整合を
+(cilium values / ArgoCD Application / terraform / HAProxy / Caddy)の整合を
 サイトごとに突き合わせる。乖離があれば exit 1。
 """
 
@@ -176,18 +176,21 @@ check(
     f"gateway/caddy/Caddyfile に auth_host({network['auth_host']})のブロックが無い",
 )
 
-# --- minecraft: Service nodePort ↔ tcp_routes.node_port -----------------------
-mc_route = next((r for r in tcp_routes if r["name"] == "minecraft"), None)
-if mc_route:
-    svc = load(f"kubernetes/sites/{mc_route['site']}/apps/minecraft/service.yaml")
+# --- tcp_routes: 対応する NodePort Service(kubernetes/sites/<site>/apps/<name>/service.yaml)
+#     があれば nodePort と externalTrafficPolicy を突合する ------------------------
+for r in tcp_routes:
+    svc_path = ROOT / f"kubernetes/sites/{r['site']}/apps/{r['name']}/service.yaml"
+    if not svc_path.exists():
+        continue
+    svc = yaml.safe_load(svc_path.read_text())
     node_ports = {p.get("nodePort") for p in svc["spec"]["ports"]}
     check(
-        int(mc_route["node_port"]) in node_ports,
-        f"minecraft Service nodePort={node_ports} に tcp_routes node_port={mc_route['node_port']} が無い",
+        int(r["node_port"]) in node_ports,
+        f"{r['name']} Service nodePort={node_ports} に tcp_routes node_port={r['node_port']} が無い",
     )
     check(
         svc["spec"].get("externalTrafficPolicy", "Cluster") == "Cluster",
-        "minecraft Service は externalTrafficPolicy=Cluster にすること(HAProxy が全ノードへ振るため)",
+        f"{r['name']} Service は externalTrafficPolicy=Cluster にすること(HAProxy が全ノードへ振るため)",
     )
 
 if errors:

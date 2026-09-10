@@ -1,6 +1,7 @@
 # Linode(ハブ)上の HAProxy(L4 TCP)。tcp_routes の port を受けて対象拠点の
-# 全ノードの NodePort へ wg 越しに転送する。Minecraft は前段の Velocity から
-# ここへ接続する想定(プレイヤー IP は Velocity の modern forwarding で渡す)。
+# 全ノードの NodePort へ wg 越しに転送する。tcp_routes が空でも HAProxy は入れておく
+# (将来 Minecraft を置くときは前段の Velocity からここへ接続し、プレイヤー IP は
+# modern forwarding で渡す想定)。
 # 設計: docs/content/docs/architecture/wireguard.mdx(公開経路の節)
 
 - name: tcp_routes の site が inventory のグループであることを確認

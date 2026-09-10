@@ -27,7 +27,7 @@ graph TB
         S2N1 --- S2N2
     end
 
-    Internet -- "80/443(Caddy) / 25565(HAProxy)" --> GW
+    Internet -- "80/443(Caddy) / L4 は HAProxy" --> GW
     Admin -- "WireGuard(管理経路のみ)" --> GW
     GW -- "WireGuard(フルトンネル)" --> S1N1
     GW -- "WireGuard(フルトンネル)" --> S1N2
@@ -90,8 +90,9 @@ graph TB
   (`https://10.100.0.11:6443` / `https://10.100.0.21:6443`。certSANs に含めてある)を使う
 - HTTP/HTTPS の公開は Linode 上の Caddy がホスト名ごとに対象拠点の全ノード
   :80(Cilium Gateway)へトンネル越しに転送する(TLS 終端、ノード障害時の
-  自動切替、両拠点を 1か所で扱える)。Minecraft など L4 のサービスは
-  HAProxy が対象拠点の NodePort へ転送する(詳細は `/docs/architecture/wireguard`)
+  自動切替、両拠点を 1か所で扱える)。HTTP 以外(将来の Minecraft など)は
+  HAProxy が対象拠点の NodePort へ転送する仕組みを用意してある(当面は未使用。
+  詳細は `/docs/architecture/wireguard`)
 
 <Callout title="Pod / Service CIDR は両拠点で同一値">
   クラスタ同士を接続しない前提でのみ成立する制約。詳細と、将来 cluster

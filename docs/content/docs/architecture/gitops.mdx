@@ -29,9 +29,8 @@ kubernetes/
     │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
     │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Linode の Caddy)
     │   │   └── monitoring/
-    │   └── apps/
-    │       └── minecraft/          # NodePort(Linode の HAProxy 経由、Velocity 配下)
-    └── site2/              # site1 と同構造(apps は空の雛形)
+    │   └── apps/               # 個別アプリの Application(当面は空)
+    └── site2/              # site1 と同構造
 ```
 
 ## app-of-apps と sync wave
@@ -56,7 +55,7 @@ graph LR
 | -1 | `cert-manager` | クラスタ内部向け証明書の仕組み(公開サービスの TLS は Linode 上の Caddy が終端するため必須ではない) |
 | 0 | `ingress` | Cilium Gateway API(hostNetwork、:80。Caddy からの転送を受ける) |
 | 1 | `monitoring` | 監視 |
-| 2 | `apps` | 個別アプリ(minecraft等) |
+| 2 | `apps` | 個別アプリ(当面は空。Minecraft は後回し) |
 
 `root` と `cilium` の Application は `prune: false`(誤削除防止 / CNI破壊防止)。
 

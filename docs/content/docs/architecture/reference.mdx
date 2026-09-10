@@ -26,19 +26,20 @@ description: CIDR・VIP・Caddy / HAProxy の公開ルート・各コンポー�
 | Pod CIDR | `10.244.0.0/16` | **両拠点で同一値**(`/docs/architecture/multi-site` 参照) |
 | Service CIDR | `10.96.0.0/12` | 同上 |
 | kube-api ポート | `6443` | |
-| 外部公開ポート | Minecraft `25565`、HTTP/HTTPS `80`/`443` | `25565` は HAProxy(`tcp_routes`)、`80`/`443` は Caddy(`proxy_routes`)。SSH は公開せず wg 経由のみ |
+| 外部公開ポート | HTTP/HTTPS `80`/`443` | Caddy(`gateway/caddy/Caddyfile`)。L4 は HAProxy(`tcp_routes`、当面は空)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使用。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## HAProxy の TCP ルート(`ansible/group_vars/all/network.yml` の `tcp_routes`)
 
-| name | port | site | node_port | allowed_sources | 備考 |
-|---|---|---|---|---|---|
-| minecraft | `25565` | site1 | `30565` | `[]`(全公開) | site1 の両ノードの NodePort へ転送。前段の Velocity の IP を `allowed_sources` に入れること |
+当面は空(Minecraft は最初の構築対象から外している)。行の形式は
+`{ name, port, site, node_port, allowed_sources }` で、port を `site` の全ノードの
+NodePort へ転送する。
 
-L4 なのでクライアント実IPは届かない(Minecraft は Velocity の modern
+L4 なのでクライアント実IPは届かない(Minecraft なら Velocity の modern
 forwarding でプレイヤー IP を渡す)。`terraform` の `public_tcp_ports` =
 `tcp_routes` の port + `proxy_public_ports` であること、`node_port` が
-Minecraft Service の nodePort と一致することは `make check-consistency` が検査する。
+`kubernetes/sites/<site>/apps/<name>/service.yaml` の nodePort と一致することは
+`make check-consistency` が検査する。
 
 ## wg 内の DNS(`ansible/group_vars/all/network.yml` の `wg_dns_*`)
 

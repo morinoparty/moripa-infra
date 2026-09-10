@@ -1,4 +1,5 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources:
-  - minecraft-app.yaml
+# site1 のアプリ Application をここに追加する(Minecraft は当面置かない。
+# 置くときは NodePort Service + network.yml の tcp_routes + terraform の public_tcp_ports を揃える)
+resources: []

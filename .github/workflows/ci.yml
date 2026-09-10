@@ -75,7 +75,6 @@ jobs:
                    kubernetes/sites/site1/infrastructure/ingress \
                    kubernetes/sites/site1/infrastructure/monitoring \
                    kubernetes/sites/site1/apps \
-                   kubernetes/sites/site1/apps/minecraft \
                    kubernetes/sites/site2/bootstrap/argocd \
                    kubernetes/sites/site2/bootstrap/applications \
                    kubernetes/sites/site2/infrastructure/ingress \

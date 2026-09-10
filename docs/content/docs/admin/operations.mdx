@@ -57,16 +57,16 @@ CI でも同じバイナリで `make lint-caddy` が走るので、壊れた Cad
 
 ## L4 サービス(HAProxy)の追加・変更
 
-Minecraft など HTTP 以外のサービスは Linode 上の HAProxy が受ける。
+HTTP 以外のサービス(将来の Minecraft など)は Linode 上の HAProxy が受ける。当面 `tcp_routes` は空。
 `ansible/group_vars/all/network.yml` の `tcp_routes` に行を足して
 `make gateway` を実行する(`haproxy -c` で検証後に reload)。ノード障害時の
 切り替えは HAProxy の TCP ヘルスチェックが自動で行い、手作業は不要。
 
 - 新しい port を足したら `terraform` の `public_tcp_ports` にも追加して
   `make tf-apply`(Cloud Firewall)
-- `allowed_sources` に Velocity の IP を入れる。空だとバックエンドの
-  Minecraft(online-mode=false)に誰でも直接つなげる状態になり、Velocity の
-  forwarding secret だけが防壁になる
+- `allowed_sources` で送信元を絞る。Minecraft(Velocity 配下、online-mode=false)なら
+  Velocity の IP を入れる。空だとバックエンドに誰でも直接つなげる状態になり、
+  Velocity の forwarding secret だけが防壁になる
 - 状態確認: `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
 
 ## Linode 障害時の挙動

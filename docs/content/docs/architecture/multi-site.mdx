@@ -52,11 +52,13 @@ upstream は inventory から自動導出されるため、ノードの増減で
 
 `tcp_routes` に `{ name, port, site, node_port, allowed_sources }` を追加すると、
 Linode 上の HAProxy がその port を `site` の全ノードの NodePort へ転送する。
-現状は site1 の Minecraft(25565 → NodePort 30565)のみ。site2 にも Minecraft を
-置くなら別の port(例: 25566)で行を足し、`terraform` の `public_tcp_ports`
-にもポートを足す。Velocity 側はバックエンドごとに `Linode の IP:port` を
-登録する。`allowed_sources` に Velocity の IP を入れて、バックエンドへの
-直接接続を防ぐこと。
+当面は空(Minecraft は最初の構築対象から外している)。Minecraft を置くときは
+`{ name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: [...] }`
+のように行を足し、`terraform` の `public_tcp_ports` にもポートを足す。拠点側には
+同じ `node_port` の NodePort Service(`externalTrafficPolicy: Cluster`)を
+`kubernetes/sites/<site>/apps/<name>/service.yaml` に置く(`make check-consistency` が
+突合する)。Velocity 側はバックエンドごとに `Linode の IP:port` を登録し、
+`allowed_sources` に Velocity の IP を入れて、バックエンドへの直接接続を防ぐこと。
 
 ## 拠点を追加する場合(site3 の例)
 

@@ -67,6 +67,13 @@ endif
 	$(VENV)/bin/python scripts/gen_node_bootstrap.py $(HOST) > bootstrap-$(HOST).sh
 	@echo "生成: bootstrap-$(HOST).sh(wg 秘密鍵を含む。安全な経路で渡し、実行後は削除させること)"
 
+.PHONY: hw-report
+hw-report: ## 使い方: make hw-report HOST=site1-node2 (ノードの CPU / メモリ / ストレージを Discord に投稿。webhook は ~/keys/discord-hw.webhook)
+ifndef HOST
+	$(error HOST を指定すること: make hw-report HOST=site1-node2)
+endif
+	scripts/report_hardware.sh --host $(HOST).wg.morino.party
+
 # ---- ArgoCD bootstrap(一度きりの操作)-------------------------------------
 
 .PHONY: bootstrap-argocd

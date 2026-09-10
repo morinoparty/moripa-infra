@@ -69,6 +69,21 @@ HTTP 以外のサービス(将来の Minecraft など)は Linode 上の HAProxy 
   Velocity の forwarding secret だけが防壁になる
 - 状態確認: `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
 
+## ノードのハードウェア情報を Discord に投稿する
+
+`scripts/report_hardware.sh` がノードの CPU / メモリ / ストレージ / OS / アドレスを
+Discord の webhook に埋め込みで投稿する。wg が張れたノードに対して管理機から実行する。
+
+```sh
+make hw-report HOST=site1-node2     # ssh site1-node2.wg.morino.party で収集して投稿
+scripts/report_hardware.sh           # 実行したマシン自身を投稿
+```
+
+webhook URL は秘密(持っていれば誰でも投稿できる)なので、管理機の
+`~/keys/discord-hw.webhook` に置く(または `DISCORD_WEBHOOK_URL` で渡す)。
+リモート実行でも収集だけをノードで行い、投稿は管理機から行うので webhook はノードに渡らない。
+`check_secrets.sh` は webhook URL のパターンも検出する。
+
 ## Linode 障害時の挙動
 
 クラスタ内通信(etcd / API / kubelet / Pod の VXLAN)は拠点の LAN で直接

@@ -17,6 +17,8 @@ patterns=(
   # Cloudflare token / OAuth client secrets / cookie secrets (group_vars/gateway/auth.sops.yml)
   '^cloudflare_dns_api_token: *[^E ].*'
   '^oauth2_proxy_[a-z]+_(client_secret|cookie_secret): *[^E ].*'
+  # Discord webhook URL (anyone holding it can post to the channel)
+  'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+'
 )
 
 fail=0

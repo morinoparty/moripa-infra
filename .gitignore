@@ -24,4 +24,6 @@ __pycache__/
 
 # gen_node_bootstrap.py の生成物(wg 秘密鍵を含む)
 bootstrap-*.sh
+# 一時利用のハードウェア報告スクリプト(Discord webhook を直書き)
+report-hardware.sh
 .caddy-render/

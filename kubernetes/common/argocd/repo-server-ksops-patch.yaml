@@ -6,14 +6,11 @@ spec:
   template:
     spec:
       initContainers:
-        # ksops と(ksops 同梱の)kustomize を repo-server へコピー
+        # ksops と(ksops 同梱の)kustomize を repo-server へコピー。
+        # v4.5 のイメージは distroless(shell 無し)なので ksops 自身の install サブコマンドを使う
         - name: install-ksops
           image: viaductoss/ksops:v4.5.1
-          command: [/bin/sh, -c]
-          args:
-            - >-
-              cp /usr/local/bin/ksops /custom-tools/ &&
-              cp /usr/local/bin/kustomize /custom-tools/
+          command: [/usr/local/bin/ksops, install, --with-kustomize, /custom-tools]
           volumeMounts:
             - mountPath: /custom-tools
               name: custom-tools
@@ -29,6 +26,11 @@ spec:
             - mountPath: /usr/local/bin/kustomize
               name: custom-tools
               subPath: kustomize
+            # KRM exec plugin(generator の config.kubernetes.io/function: exec.path: ksops)は
+            # PATH 上の ksops を使う。旧来のプラグインパスにも置いておく
+            - mountPath: /usr/local/bin/ksops
+              name: custom-tools
+              subPath: ksops
             - mountPath: /.config/kustomize/plugin/viaduct.ai/v1/ksops/ksops
               name: custom-tools
               subPath: ksops

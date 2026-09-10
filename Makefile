@@ -74,7 +74,8 @@ bootstrap-argocd: ## 使い方: make bootstrap-argocd SITE=site1 (KUBECONFIG は
 ifndef SITE
 	$(error SITE を指定すること: make bootstrap-argocd SITE=site1)
 endif
-	kubectl apply -k kubernetes/sites/$(SITE)/bootstrap/argocd
+	# ArgoCD の CRD は annotation 上限(256KB)を超えるので server-side apply
+	kubectl apply --server-side --force-conflicts -k kubernetes/sites/$(SITE)/bootstrap/argocd
 	sops -d kubernetes/sites/$(SITE)/bootstrap/secrets/sops-age.sops.yaml | kubectl apply -f -
 	kubectl apply -f kubernetes/sites/$(SITE)/bootstrap/root-app.yaml
 

@@ -106,11 +106,27 @@
   loop: [kubeadm, kubelet, kubectl]
   become: true
 
+# Pod(dnsPolicy Default / CoreDNS の上流)が使う resolv.conf。ホストの resolv.conf は
+# 拠点の RA/DHCP が配る DNS(v6 のみの LAN では IPv6 アドレス)になり、IPv4 しか持たない
+# Pod からは届かず外部名の解決が SERVFAIL になる。wg 経由で必ず届く v4 の DNS
+# (ハブの dnsmasq = <host>.wg.morino.party も引ける)と public DNS に固定する
+- name: kubelet / CoreDNS 用の resolv.conf を配置
+  ansible.builtin.copy:
+    dest: /etc/kubernetes/resolv.conf
+    content: |
+      # Ansible managed: kubelet --resolv-conf(Pod / CoreDNS の上流)
+      {% for ns in node_pod_dns_upstreams %}
+      nameserver {{ ns }}
+      {% endfor %}
+    mode: "0644"
+  become: true
+  notify: Restart kubelet
+
 - name: kubelet の node-ip をクラスタ用アドレスに固定(InternalIP = lan_address。Cilium の VXLAN 端点もこれになる)
   ansible.builtin.copy:
     dest: /etc/default/kubelet
     content: |
-      KUBELET_EXTRA_ARGS=--node-ip={{ lan_address }}
+      KUBELET_EXTRA_ARGS=--node-ip={{ lan_address }} --resolv-conf=/etc/kubernetes/resolv.conf
     mode: "0644"
   become: true
   notify: Restart kubelet

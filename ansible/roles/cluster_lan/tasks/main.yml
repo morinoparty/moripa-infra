@@ -52,6 +52,16 @@
   changed_when: false
   become: true
 
+# Cilium は rp_filter を全 NIC で 0 にする必要がある(all/default は wireguard ロールが 0 に
+# するが、起動時に default=2 で作られた LAN NIC には残る)
+- name: LAN NIC の rp_filter を無効化(Cilium 要件)
+  ansible.posix.sysctl:
+    name: "net.ipv4.conf.{{ cluster_lan_interface }}.rp_filter"
+    value: "0"
+    sysctl_file: /etc/sysctl.d/91-cluster-lan-rpfilter.conf
+    reload: true
+  become: true
+
 - name: netplan に第 2 サブネットのアドレスを追加
   ansible.builtin.template:
     src: 60-cluster-lan.yaml.j2

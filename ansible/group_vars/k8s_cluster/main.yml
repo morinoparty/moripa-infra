@@ -26,3 +26,9 @@ data_vg: ubuntu-vg
 data_lv: data
 data_mount: /data
 longhorn_data_path: "{{ data_mount }}/longhorn"
+
+# Pod / CoreDNS の上流 DNS(kubelet --resolv-conf)。拠点の LAN が IPv6 のみでも Pod(IPv4)から
+# 届くように、wg のハブ(dnsmasq。<host>.wg.morino.party も引ける)と public DNS を使う
+node_pod_dns_upstreams:
+  - "{{ wg_hub_address }}"
+  - 1.1.1.1

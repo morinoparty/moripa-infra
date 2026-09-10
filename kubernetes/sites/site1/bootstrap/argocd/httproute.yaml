@@ -7,12 +7,23 @@ metadata:
   name: argocd-server
   namespace: argocd
 spec:
+  # group/kind/matches/weight は API の既定値。省略すると ArgoCD の diff が
+  # 常に OutOfSync になるので明示する
   parentRefs:
-    - name: public
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: public
       namespace: ingress
   hostnames:
     - argocd.site1.dev.morino.party
   rules:
-    - backendRefs:
-        - name: argocd-server
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: argocd-server
           port: 80
+          weight: 1

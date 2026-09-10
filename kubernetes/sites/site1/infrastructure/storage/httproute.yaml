@@ -5,12 +5,23 @@ metadata:
   name: longhorn-ui
   namespace: longhorn-system
 spec:
+  # group/kind/matches/weight は API の既定値。省略すると ArgoCD の diff が
+  # 常に OutOfSync になるので明示する
   parentRefs:
-    - name: public
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: public
       namespace: ingress
   hostnames:
     - longhorn.site1.private.dev.morino.party
   rules:
-    - backendRefs:
-        - name: longhorn-frontend
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: longhorn-frontend
           port: 80
+          weight: 1

@@ -29,7 +29,7 @@ argocd-server は `server.insecure: "true"` で HTTP 待ち受け)。ArgoCD 自�
 `argocd login argocd.site1.dev.morino.party --grpc-web`。
 
 ArgoCD 本体の overlay(`bootstrap/argocd/`)は Application では管理していないので、
-変更したら `kubectl apply -k kubernetes/sites/site1/bootstrap/argocd` を再実行する。
+変更したら `kubectl apply --server-side --force-conflicts -k kubernetes/sites/site1/bootstrap/argocd` を再実行する(CRD が大きいため server-side)。
 
 ## 内部で行われること
 

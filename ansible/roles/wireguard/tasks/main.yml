@@ -29,10 +29,15 @@
     cache_valid_time: 3600
   become: true
 
-- name: rp_filter を loose に設定(ハブ経由で wg0 に届くパケットを reverse path 検査で落とさない安全側の設定)
+# ハブ(2 = loose): ハブ経由で wg0 に届くパケットを reverse path 検査で落とさない。
+# spoke(k8s ノード、0 = off): Cilium は rp_filter=0 を要求する(lxc から host stack に
+# 入る Pod のパケットが loose でも martian source で捨てられ、Pod → API/外部が全滅する)。
+# Cilium 自身も 99-zzz-override_cilium.conf で 0 にするが、この role が後から 2 で
+# 上書きしないように役割で値を分ける
+- name: rp_filter を設定(hub は loose、spoke は off)
   ansible.posix.sysctl:
     name: "{{ item }}"
-    value: "2"
+    value: "{{ '2' if wg_role == 'hub' else '0' }}"
     sysctl_file: /etc/sysctl.d/90-wireguard-rpfilter.conf
     reload: true
   loop:

@@ -79,6 +79,8 @@ def main() -> None:
     # priority 200: Cilium が local テーブルのルールを pref 100 へ動かすので、それより後ろに置く
     exclude = [sv["cluster_lan_cidr"], net["pod_cidr"], net["service_cidr"]]
     post_up = "\n".join(f"PostUp   = ip rule add to {c} lookup main priority 200" for c in exclude)
+    # wg-quick が付ける src_valid_mark=1 は Cilium の mark 付きパケットを martian にするので戻す
+    post_up += "\nPostUp   = sysctl -q -w net.ipv4.conf.all.src_valid_mark=0"
     post_down = "\n".join(f"PostDown = ip rule del to {c} lookup main priority 200" for c in exclude)
 
     print(f"""#!/usr/bin/env bash

@@ -172,7 +172,7 @@
 - name: git から Caddyfile を取り込み(caddy-gitops を 1 回実行)
   ansible.builtin.command: /usr/local/sbin/caddy-gitops
   register: reverse_proxy_gitops
-  changed_when: "'更新' in reverse_proxy_gitops.stdout"
+  changed_when: "'updated Caddyfile' in reverse_proxy_gitops.stdout"
   become: true
 
 - name: caddy-gitops.timer を有効化

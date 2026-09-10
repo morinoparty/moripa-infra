@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
-# git の {{ caddy_gitops_subdir }}/ を取り込み、Caddyfile を検証してから反映する。
-# caddy-gitops.timer が {{ caddy_gitops_interval }} ごとに実行。手動: systemctl start caddy-gitops
-# ログ: journalctl -u caddy-gitops
+# Pull {{ caddy_gitops_subdir }}/ from git, validate the Caddyfile, then apply it.
+# Run by caddy-gitops.timer every {{ caddy_gitops_interval }}. Manual run: systemctl start caddy-gitops
+# Logs: journalctl -u caddy-gitops
 set -euo pipefail
 
 repo_url="{{ caddy_gitops_repo_url }}"
@@ -21,22 +21,22 @@ rev=$(git -C "$work" rev-parse --short HEAD)
 src="$work/$subdir"
 
 if [ ! -f "$src/Caddyfile" ]; then
-  echo "caddy-gitops: $subdir/Caddyfile が $branch に無い($rev)。何もしない" >&2
+  echo "caddy-gitops: $subdir/Caddyfile not found on $branch ($rev); nothing to do" >&2
   exit 0
 fi
 
-# 静的ファイル(ログイン選択画面など)。reload は不要
+# Static files (login chooser page etc.). No reload needed.
 mkdir -p "$dest/www"
 rsync -a --delete --chmod=D0755,F0644 "$src/www/" "$dest/www/"
 
-# Caddyfile: 同ディレクトリの generated.caddy(Ansible 生成)を import するので、
-# /etc/caddy 内に置いてから検証する
+# The Caddyfile imports generated.caddy (written by Ansible) from the same
+# directory, so it must be placed under /etc/caddy before validation.
 if cmp -s "$src/Caddyfile" "$dest/Caddyfile"; then
   exit 0
 fi
 install -m 0644 "$src/Caddyfile" "$dest/Caddyfile.new"
 if ! caddy validate --adapter caddyfile --config "$dest/Caddyfile.new" --envfile "$dest/env" >/dev/null 2>"$dest/Caddyfile.new.err"; then
-  echo "caddy-gitops: Caddyfile($rev)の検証に失敗。現行設定を維持する" >&2
+  echo "caddy-gitops: validation of Caddyfile ($rev) failed; keeping the current config" >&2
   cat "$dest/Caddyfile.new.err" >&2
   rm -f "$dest/Caddyfile.new"
   exit 1
@@ -44,4 +44,4 @@ fi
 rm -f "$dest/Caddyfile.new.err"
 mv -f "$dest/Caddyfile.new" "$dest/Caddyfile"
 systemctl try-reload-or-restart caddy
-echo "caddy-gitops: Caddyfile を $rev に更新して reload した"
+echo "caddy-gitops: updated Caddyfile to $rev and reloaded caddy"

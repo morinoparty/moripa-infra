@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 平文の秘密がコミットされていないか検査する(pre-commit / CI 共用)。
-# sops で暗号化済みのファイルは "sops:" メタデータを持ち、値は ENC[...] に
-# なるため以下のパターンには一致しない。*.example は対象外。
+# Detect plaintext secrets committed to the repository (shared by pre-commit and CI).
+# Files encrypted with sops carry a "sops:" metadata block and their values are
+# ENC[...], so they never match the patterns below. *.example files are excluded.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -10,11 +10,11 @@ patterns=(
   'AGE-SECRET-KEY-1[0-9A-Z]'
   '-----BEGIN (OPENSSH|RSA|EC) PRIVATE KEY-----'
   '^PrivateKey *= *[A-Za-z0-9+/]{43}='
-  # make wg-keygen が sops 暗号化前に書く YAML 形式(暗号化後は ENC[...] になる)
+  # YAML written by `make wg-keygen` before sops encryption (becomes ENC[...] afterwards)
   'wg_private_key: *[A-Za-z0-9+/]{43}='
-  # 初回接続用パスワード(暗号化後は ENC[...] になる)
+  # First-contact node password (becomes ENC[...] afterwards)
   '^ansible(_become)?_password: *[^E ].*'
-  # Cloudflare トークン / OAuth クライアント secret / cookie secret(group_vars/gateway/auth.sops.yml)
+  # Cloudflare token / OAuth client secrets / cookie secrets (group_vars/gateway/auth.sops.yml)
   '^cloudflare_dns_api_token: *[^E ].*'
   '^oauth2_proxy_[a-z]+_(client_secret|cookie_secret): *[^E ].*'
 )
@@ -22,14 +22,14 @@ patterns=(
 fail=0
 for pat in "${patterns[@]}"; do
   if hits=$(git grep -nIE "$pat" -- ':!*.example' ':!scripts/check_secrets.sh' 2>/dev/null); then
-    echo "NG: 平文の秘密らしき文字列を検出 (pattern: $pat)"
+    echo "NG: possible plaintext secret detected (pattern: $pat)"
     echo "$hits"
     fail=1
   fi
 done
 
 if [ "$fail" -ne 0 ]; then
-  echo "→ sops -e -i で暗号化するか、ファイルを削除すること"
+  echo "-> encrypt with 'sops -e -i <file>' or remove the file"
   exit 1
 fi
-echo "OK: 平文の秘密は検出されず"
+echo "OK: no plaintext secrets found"

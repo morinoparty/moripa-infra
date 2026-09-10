@@ -33,6 +33,8 @@ import generated.caddy
 # ---- 認証付き(oauth2-proxy)----------------------------------------------------
 *.site1.private.dev.morino.party {
 	import cf_tls
+	# アクセスログ(journalctl -u caddy)。管理 UI の不調を追うため private 側だけ出す
+	log
 	import auth_required
 	import to_site1
 }

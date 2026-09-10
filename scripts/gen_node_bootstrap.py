@@ -73,6 +73,8 @@ def main() -> None:
         check=True,
     )
     priv = yaml.safe_load(dec.stdout)["wg_private_key"]
+    node_pub = load(f"ansible/host_vars/{host}/main.yml")["wg_public_key"]
+    endpoint_host = net.get("gateway_fqdn") or net["gateway_public_ip"]
 
     exclude = [sv["cluster_lan_cidr"], net["pod_cidr"], net["service_cidr"]]
     post_up = "\n".join(f"PostUp   = ip rule add to {c} lookup main priority 100" for c in exclude)
@@ -91,6 +93,34 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get install -y -q wireguard
 
+# Catch transcription errors (e.g. a hand-typed key): the embedded private key must
+# derive the public key registered on the hub for this host.
+expected_pub="{node_pub}"
+actual_pub=$(echo "{priv}" | wg pubkey)
+if [ "$actual_pub" != "$expected_pub" ]; then
+    echo "NG: the private key in this script does not match the public key registered for {host}."
+    echo "    expected: $expected_pub"
+    echo "    actual:   $actual_pub"
+    echo "    The script was probably altered while copying. Re-run it exactly as provided (curl ... | sudo bash)."
+    exit 1
+fi
+
+# systemd-networkd (Ubuntu's default) deletes routing policy rules and routes it did
+# not create whenever it reconfigures a link. wg-quick's full tunnel relies on such a
+# rule ("not fwmark ... lookup 51820"); without it, traffic for the hub leaves the LAN
+# unencrypted and the tunnel looks up but nothing gets through. Keep them.
+# (The cluster_lan Ansible role writes the same file later.)
+if systemctl is-active --quiet systemd-networkd; then
+    mkdir -p /etc/systemd/networkd.conf.d
+    cat > /etc/systemd/networkd.conf.d/90-keep-wireguard.conf <<'NETEOF'
+[Network]
+ManageForeignRoutingPolicyRules=no
+ManageForeignRoutes=no
+NETEOF
+    systemctl restart systemd-networkd
+    sleep 2
+fi
+
 umask 077
 cat > /etc/wireguard/wg0.conf <<'WGEOF'
 [Interface]
@@ -102,20 +132,56 @@ MTU        = {net["wg_mtu"]}
 
 [Peer]  # linode-gw (hub)
 PublicKey           = {gw_pub}
-Endpoint            = {net.get("gateway_fqdn") or net["gateway_public_ip"]}:{net["wg_port"]}
+Endpoint            = {endpoint_host}:{net["wg_port"]}
 AllowedIPs          = 0.0.0.0/0
 PersistentKeepalive = 25
 WGEOF
 
-systemctl enable --now wg-quick@wg0
+# Restart (not just enable) so a re-run picks up a corrected config
+systemctl enable wg-quick@wg0 > /dev/null 2>&1
+systemctl restart wg-quick@wg0
 
-echo "Checking connectivity to the hub..."
-if ping -c 3 -W 5 {net["wg_hub_address"]} > /dev/null; then
+echo "Checking connectivity to the hub (up to 30s)..."
+ok=0
+for _ in $(seq 1 10); do
+    if ping -c 1 -W 3 {net["wg_hub_address"]} > /dev/null 2>&1; then ok=1; break; fi
+done
+if [ "$ok" = 1 ]; then
     echo "OK: Connected. On-site work is complete. Please contact the administrator."
+    exit 0
+fi
+
+# ---- Diagnostics: printed only on failure. Send this whole output to the administrator.
+echo "NG: Cannot reach the hub. Please send everything below to the administrator."
+echo "===== diagnostics ====="
+echo "hostname: $(hostname)"
+echo "public key: $(wg show wg0 public-key 2>/dev/null || echo '(wg0 is not up)')  (expected: $expected_pub)"
+echo "wg-quick@wg0: $(systemctl is-active wg-quick@wg0)"
+hs=$(wg show wg0 latest-handshakes 2>/dev/null | awk '{{print $2}}')
+if [ -z "$hs" ] || [ "$hs" = 0 ]; then
+    echo "handshake: none  -> packets are not reaching the hub, or the hub does not know this key"
 else
-    echo "NG: Cannot reach the hub. Please contact the administrator."
-    exit 1
-fi""")
+    echo "handshake: $(date -d @"$hs")  -> tunnel is up; the problem is routing or DNS"
+fi
+echo "transfer: $(wg show wg0 transfer 2>/dev/null | awk '{{print "rx="$2" tx="$3}}')"
+echo "endpoint: {endpoint_host} -> $(getent ahostsv4 {endpoint_host} | awk 'NR==1{{print $1; f=1}} END{{if(!f) print "DNS FAILED"}}')"
+echo "default route (main table): $(ip route show default | head -1)"
+echo "addresses:"; ip -br addr | sed 's/^/    /'
+echo "routes:"; ip route | sed 's/^/    /'
+echo "rules:"; ip rule | sed 's/^/    /'
+ip rule | grep -q 'not from all fwmark' || echo "    !! wg-quick's fwmark rule is missing -> the full tunnel is not routing (networkd removed it?)"
+echo "table 51820:"; ip route show table 51820 2>/dev/null | sed 's/^/    /'
+# With the full tunnel up, plain ping goes into wg0. Use the wg fwmark so the packet
+# bypasses the tunnel and tests the LAN's own internet access.
+mark=$(wg show wg0 fwmark 2>/dev/null | sed 's/^0x//'); mark=$((16#${{mark:-0}}))
+echo "internet (bypassing wg0): $(ping -m "$mark" -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && echo reachable || echo UNREACHABLE)"
+echo "hub endpoint (bypassing wg0): $(ping -m "$mark" -c 1 -W 3 {net["gateway_public_ip"]} > /dev/null 2>&1 && echo reachable || echo UNREACHABLE)"
+echo "dns: $(getent hosts deb.debian.org > /dev/null 2>&1 && echo ok || echo FAILED)"
+echo "clock: $(date -u +%Y-%m-%dT%H:%M:%SZ)  (a clock off by more than a few minutes breaks the handshake)"
+echo "======================="
+echo "Hints: no handshake + internet reachable => the router may block UDP {net["wg_port"]} outbound, or the hub has not registered this key yet."
+echo "       internet UNREACHABLE or empty default route => the LAN link / DHCP is the problem; check the cable and 'ip -br addr'."
+exit 1""")
 
 
 if __name__ == "__main__":

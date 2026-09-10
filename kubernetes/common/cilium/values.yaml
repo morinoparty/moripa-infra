@@ -48,8 +48,10 @@ ingressController:
     type: ClusterIP
   # Envoy が全ノードの :80 に直接 listen し、Linode 上の Caddy(リバースプロキシ)
   # からの転送を wg0 で受ける。外部から :80 へは Caddy 経由でしか届かない
-  # (Cloud Firewall + nftables)。LAN 内のホストからは直接 :80 に届くので、
-  # LAN は信頼する前提。Ingress には Gateway API の xffNumTrustedHops 相当が無く、
+  # (Cloud Firewall + nftables)。拠点 LAN から直接 :80 に届く分はノード側の nft
+  # (roles/k8s_prereq の ingress-filter: wg0 / lo 以外からの :80 を drop)で捨てるので、
+  # oauth2-proxy を素通りする経路は無い。sharedListenerPort は ansible の
+  # ingress_listener_port と一致させる。Ingress には Gateway API の xffNumTrustedHops 相当が無く、
   # Envoy は X-Forwarded-For にハブの wg アドレス(10.100.0.1)を追記するので、
   # クライアント実IPが要るアプリは XFF の先頭を読むこと
   hostNetwork:

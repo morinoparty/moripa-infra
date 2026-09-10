@@ -62,6 +62,7 @@ def inventory_hosts() -> dict:
 network = load("ansible/group_vars/all/network.yml")
 versions = load("ansible/group_vars/all/versions.yml")
 common_values = load("kubernetes/common/cilium/values.yaml")
+k8s_cluster = load("ansible/group_vars/k8s_cluster/main.yml")
 hosts = inventory_hosts()
 
 for site in SITES:
@@ -89,6 +90,15 @@ for site in SITES:
     check(
         network["wg_interface"] in values["devices"],
         f"[{site}] wg_interface が cilium devices に無い",
+    )
+    # Ingress(hostNetwork)の listen ポートは、ノード側の nft フィルタ(roles/k8s_prereq)が
+    # wg0 / lo からのみ許可するポートと同じであること
+    ing = values["ingressController"]
+    check(ing["enabled"] is True, f"[{site}] ingressController.enabled が true でない")
+    check(ing["hostNetwork"]["enabled"] is True, f"[{site}] ingressController.hostNetwork.enabled が true でない")
+    check(
+        int(ing["hostNetwork"]["sharedListenerPort"]) == int(k8s_cluster["ingress_listener_port"]),
+        f"[{site}] ingressController.hostNetwork.sharedListenerPort != ingress_listener_port",
     )
 
     # --- kube-vip VIP と各ノードの lan_address が cluster_lan_cidr 内にあること ------

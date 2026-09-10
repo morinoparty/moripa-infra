@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Restrict the Cilium ingress listener (:{{ ingress_listener_port }}) to wg0 and lo
+# nftables.service は使っていない(既定の /etc/nftables.conf は flush ruleset を含むため)
+After=network-pre.target
+Wants=network-pre.target
+Before=network.target kubelet.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/ingress-filter.nft
+ExecReload=/usr/sbin/nft -f /etc/nftables.d/ingress-filter.nft
+ExecStop=/usr/sbin/nft delete table inet moripa_ingress_filter
+
+[Install]
+WantedBy=multi-user.target

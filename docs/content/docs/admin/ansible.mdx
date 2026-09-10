@@ -146,6 +146,9 @@ control-plane が 1台のため、node1 の全損に備えて etcd スナップ�
 - ✅ Caddy 経由のリクエストで、アプリ側に `X-Forwarded-For` としてクライアントの
   実IPが先頭に入って届く(末尾はハブの `10.100.0.1`)
 - ✅ Pod 内から大きな HTTPS レスポンスを取得できる(MSS clamp / MTU の検証)
+- ✅ ノード同士で LAN 越しに `curl -m 5 http://10.200.1.<N>/` すると timeout する
+  (`ingress-filter`: wg0 / lo 以外からの `:80` を drop)。ハブからの
+  `curl -H "Host: <host>" http://10.100.0.1<N>/` は届く
 
 <Callout title="拠点ごとの独立性">
   site1 / site2 の control-plane 構築・検証はそれぞれ独立している。片方の

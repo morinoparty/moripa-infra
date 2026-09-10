@@ -130,3 +130,61 @@
     mode: "0644"
   become: true
   notify: Restart kubelet
+
+# --- Ingress(:80)の入口を wg0 / lo に限定 ------------------------------------------
+# Cilium の ingress controller は hostNetwork で全ノードの :80 に listen する。正規の経路は
+# Linode の Caddy(oauth2-proxy)→ wg0 だけなので、拠点 LAN から直接届く分は捨てる。
+# 独立した nft table(Cilium / wg-quick の table は触らない)を専用 unit で入れる
+- name: nftables を導入
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+    cache_valid_time: 3600
+  become: true
+  tags: [ingress_filter]
+
+- name: /etc/nftables.d を作成
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    mode: "0755"
+  become: true
+  tags: [ingress_filter]
+
+- name: Ingress フィルタの nft ルールを配置
+  ansible.builtin.template:
+    src: ingress-filter.nft.j2
+    dest: /etc/nftables.d/ingress-filter.nft
+    mode: "0644"
+  become: true
+  notify: Reload ingress filter
+  tags: [ingress_filter]
+
+- name: Ingress フィルタの unit を配置
+  ansible.builtin.template:
+    src: ingress-filter.service.j2
+    dest: /etc/systemd/system/ingress-filter.service
+    mode: "0644"
+  become: true
+  notify: Reload ingress filter
+  tags: [ingress_filter]
+
+- name: 配置した unit / ルールを先に反映(handler を待たない)
+  ansible.builtin.meta: flush_handlers
+  tags: [ingress_filter]
+
+- name: Ingress フィルタを有効化
+  ansible.builtin.systemd_service:
+    name: ingress-filter
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  tags: [ingress_filter]
+
+- name: Ingress フィルタの table が入っていることを確認
+  ansible.builtin.command: nft list table inet moripa_ingress_filter
+  register: k8s_prereq_ingress_filter_table
+  changed_when: false
+  become: true
+  tags: [ingress_filter]

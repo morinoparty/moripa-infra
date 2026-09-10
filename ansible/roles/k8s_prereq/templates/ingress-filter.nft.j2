@@ -1,0 +1,18 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+# Cilium の ingress controller(hostNetwork)は全ノードの :{{ ingress_listener_port }} に listen する。
+# 正規の経路は Linode の Caddy → wg0 だけなので、それ以外の NIC(拠点 LAN)からの :{{ ingress_listener_port }} は捨てる。
+# LAN から直接届くと oauth2-proxy を素通りして Headlamp(cluster-admin)等に触れてしまうため。
+#
+# 独立した table にして、Cilium / wg-quick が iptables-nft で持つ table を flush しない。
+# 先頭の 2 行は「無ければ作って、あれば消す」で再適用を冪等にする(nft -f でそのまま流せる)
+table inet moripa_ingress_filter
+delete table inet moripa_ingress_filter
+table inet moripa_ingress_filter {
+  chain input {
+    # iptables の filter(priority 0)より先に評価する
+    type filter hook input priority filter - 10; policy accept;
+    iifname { "{{ wg_interface }}", "lo" } tcp dport {{ ingress_listener_port }} accept
+    tcp dport {{ ingress_listener_port }} drop
+  }
+}

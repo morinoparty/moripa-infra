@@ -118,6 +118,11 @@ Caddy / HAProxy → ノードの通信はハブ自身(`10.100.0.1`)を送信元�
 をワイルドカードで受けるので、この規約の名前なら Ingress を置くだけで公開される
 (`/docs/architecture/multi-site`)。
 
+ノードの `:80` は Envoy が hostNetwork で全 NIC に開くが、ノード側の nftables
+(`roles/k8s_prereq` の `ingress-filter.service`、独立した table `inet moripa_ingress_filter`)
+が **wg0 と lo 以外からの `:80` を drop** する。拠点 LAN の端末がノードの IP に `Host` ヘッダを
+付けて直接送っても、oauth2-proxy を素通りして Headlamp などに触ることはできない。
+
 ## nftables 設定例(ハブ)
 
 `ansible` の `wireguard` ロールが `proxy_public_ports` / `tcp_routes` 変数から生成する。

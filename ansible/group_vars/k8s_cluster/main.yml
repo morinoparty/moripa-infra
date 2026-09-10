@@ -32,3 +32,8 @@ longhorn_data_path: "{{ data_mount }}/longhorn"
 node_pod_dns_upstreams:
   - "{{ wg_hub_address }}"
   - 1.1.1.1
+
+# Cilium の ingress controller(hostNetwork)が listen するポート。
+# kubernetes/common/cilium/values.yaml の ingressController.hostNetwork.sharedListenerPort と
+# 一致させる(make check-consistency で検査)。roles/k8s_prereq がこのポートを wg0 / lo からのみ許可する
+ingress_listener_port: 80

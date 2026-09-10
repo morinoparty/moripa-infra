@@ -8,11 +8,11 @@ kind: ConfigMap
 metadata:
   name: hermes-config
 data:
-  # 同梱の searxng 検索ツール: SEARXNG_URL があるだけで有効になる
-  SEARXNG_URL: "http://searxng:8080"
-  # Discord で bot を使えるユーザー ID(カンマ区切り)。DISCORD_BOT_TOKEN が Secret にあれば
-  # Discord ゲートウェイが有効になる
+  # Web 検索は Keenable(KEENABLE_API_KEY は Secret)。SearXNG は使わない
+  # Discord で bot を使えるユーザー ID / ロール ID(カンマ区切り)。DISCORD_BOT_TOKEN が Secret に
+  # あれば Discord ゲートウェイが有効になる
   DISCORD_ALLOWED_USERS: "574510037012185088"
+  DISCORD_ALLOWED_ROLES: "576354512558620682,809756033076690954,687128543687344295,865630866792644619,633546749268590593,865627933488971826"
   # Web ダッシュボード(0.0.0.0 bind のため basic 認証必須 → Secret)
   HERMES_DASHBOARD: "1"
   # 自前ホストの Honcho(honcho.yaml)。base URL を与えると self-hosted 経路になる
@@ -108,6 +108,8 @@ spec:
             # 本体のモデルは OpenCode Go(定額)のみ。OpenRouter のキーは Hermes には渡さない
             - name: OPENCODE_GO_API_KEY
               valueFrom: { secretKeyRef: { name: hermes-secrets, key: opencode-go-api-key } }
+            - name: KEENABLE_API_KEY
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: keenable-api-key } }
             - name: DISCORD_BOT_TOKEN
               valueFrom: { secretKeyRef: { name: hermes-secrets, key: discord-bot-token, optional: true } }
             - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME

@@ -1,10 +1,10 @@
 ---
 title: Hermes(エージェント)
-description: site1 で動かす Hermes + Honcho + SearXNG の構成、秘密の置き場所、モデルの選び方
+description: site1 で動かす Hermes + Honcho の構成、秘密の置き場所、モデルの選び方
 ---
 
 `kubernetes/sites/site1/apps/hermes/` を ArgoCD の `hermes` Application(`apps` の配下)が
-同期する。~/home/Yggdrasill の `manifests/hermes` を移植したもので、違いは
+同期する。Web 検索は Keenable(API キーは Secret)。~/home/Yggdrasill の `manifests/hermes` を移植したもので、違いは
 ストレージ(hostPath → Longhorn PVC)、公開経路(Ingress → HTTPRoute + oauth2-proxy)、
 秘密(SealedSecret → sops + ksops)、そしてモデルの選び方。
 
@@ -14,7 +14,6 @@ description: site1 で動かす Hermes + Honcho + SearXNG の構成、秘密の�
 | `honcho-api` / `honcho-deriver` | メモリ層(観察の導出・要約・dialectic・dream) | OpenCode Go(`glm-5.3-flash`、定額枠) |
 | embeddings | Honcho のベクトル化 | OpenRouter `openai/text-embedding-3-small`(Go に embeddings が無いため) |
 | `honcho-postgres`(pgvector)/ `honcho-redis` | 永続化 / キャッシュ | — |
-| `searxng` | Web 検索(クラスタ内のみ) | — |
 
 OpenCode Go は月額定額なので、Honcho の裏で回る細かい呼び出しをすべて Go に載せるのが
 いちばん安い。`glm-5.3-flash` を選んだのは Go の中で月間の枠(`$60` 相当)が最も大きいから。
@@ -35,7 +34,8 @@ SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey sops kubernetes/sites/site1/apps/herme
 | `openrouter-api-key`(`honcho-secrets` のみ) | Honcho 専用の OpenRouter キー(embeddings 用)。Hermes には渡さない | openrouter.ai |
 | `discord-bot-token` | Discord bot のトークン(無ければ Discord ゲートウェイは無効) | Discord Developer Portal |
 | `dashboard-username` / `dashboard-password` | ダッシュボードの basic 認証 | 生成済み(`~/keys/hermes-dashboard.password`) |
-| `searxng-secret` / `postgres-password` / `db-connection-uri` | 内部用 | 生成済み |
+| `keenable-api-key` | Keenable(Web 検索)の API キー | keenable |
+| `postgres-password` / `db-connection-uri` | 内部用 | 生成済み |
 
 ダッシュボードは `https://hermes.site1.private.dev.morino.party/`(oauth2-proxy → basic 認証)。
 

@@ -1,4 +1,4 @@
-# Hermes(Nous Research の常駐エージェント)+ Honcho(自前ホストのメモリ層)+ SearXNG。
+# Hermes(Nous Research の常駐エージェント)+ Honcho(自前ホストのメモリ層)。
 # ~/home/Yggdrasill の manifests/hermes を移植したもの。秘密は ksops(secrets.sops.yaml)
 apiVersion: argoproj.io/v1alpha1
 kind: Application

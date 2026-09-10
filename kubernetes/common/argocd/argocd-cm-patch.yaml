@@ -5,3 +5,11 @@ metadata:
 data:
   # ksops (kustomize exec plugin) を許可
   kustomize.buildOptions: --enable-alpha-plugins --enable-exec
+  # Cilium の ingress controller は hostNetwork + ClusterIP で動かしており、Ingress の
+  # status.loadBalancer が埋まらない。ArgoCD 既定の health はそれを Progressing 扱いにして
+  # sync が「waiting for healthy state of Ingress」で止まるので、Ingress は常に Healthy とみなす
+  resource.customizations.health.networking.k8s.io_Ingress: |
+    hs = {}
+    hs.status = "Healthy"
+    hs.message = "hostNetwork の Cilium Ingress は status.loadBalancer を持たない"
+    return hs

@@ -118,3 +118,11 @@ Ingress を multi-source で同期する。ノード側の前提(`/data` LV、is
   UI が開き、3 ノードとディスクの空きが見える
 - PVC を 1 つ作って Pod から書き込み、`kubectl -n longhorn-system get volumes.longhorn.io`
   でレプリカが 3 であることを確認したら削除する
+
+## Ingress の health について
+
+Cilium の ingress controller は hostNetwork(:80)+ ClusterIP で動かしているため、Ingress の
+`status.loadBalancer` は空のまま。ArgoCD 既定の health check はこれを Progressing と判定し、
+sync が「waiting for healthy state of Ingress」で止まるので、`kubernetes/common/argocd/argocd-cm-patch.yaml`
+で Ingress を常に Healthy とみなす health override を入れている。Ingress の実際の疎通は
+ハブから `curl -H "Host: <host>" http://10.100.0.1<N>/` で確認する。

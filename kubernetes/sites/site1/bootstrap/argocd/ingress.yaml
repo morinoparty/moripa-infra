@@ -1,0 +1,22 @@
+# ArgoCD UI / CLI(https://argocd.site1.dev.morino.party)。ArgoCD 自身のログインがあるので
+# 公開側(dev)のホスト名で出す。IngressClass cilium は Cilium chart が作る
+# (kubernetes/common/cilium/values.yaml の ingressController)ため、bootstrap 直後は
+# Cilium が上がるまで未接続のまま待つ
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  ingressClassName: cilium
+  rules:
+    - host: argocd.site1.dev.morino.party
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

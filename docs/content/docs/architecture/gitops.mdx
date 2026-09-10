@@ -27,8 +27,7 @@ kubernetes/
     │   │   └── root-app.yaml
     │   ├── infrastructure/
     │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
-    │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Linode の Caddy)
-    │   │   ├── storage/            # Longhorn の values + UI の HTTPRoute
+    │   │   ├── storage/            # Longhorn の values + UI の Ingress
     │   │   └── monitoring/
     │   └── apps/               # 個別アプリの Application(当面は空)
     └── site2/              # site1 と同構造
@@ -51,12 +50,11 @@ graph LR
 
 | wave | Application | 理由 |
 |---|---|---|
-| -3 | `gateway-api-crds` | Gateway API CRD が無いと Cilium は Gateway 機能をサイレントに無効化し、後入れしても再起動まで有効にならない |
+| -3 | `gateway-api-crds` | Gateway API CRD。公開経路は Ingress(Cilium 内蔵 ingress controller)に切り替えたので今は使っていないが、CRD の削除は事故の元なので残す |
 | -2 | `cilium` | CNI。すべてのPod通信の前提 |
 | -1 | `cert-manager` | クラスタ内部向け証明書の仕組み(公開サービスの TLS は Linode 上の Caddy が終端するため必須ではない) |
-| 0 | `ingress` | Cilium Gateway API(hostNetwork、:80。Caddy からの転送を受ける) |
-| 0 | `longhorn` | 分散ブロックストレージ(既定 StorageClass)。chart は charts.longhorn.io、values と HTTPRoute は git(multi-source)。`prune: false` |
-| 1 | `headlamp` | k8s の Web UI(`headlamp.site1.private.dev.morino.party`、oauth2-proxy の後ろでトークンログイン) |
+| 0 | `longhorn` | 分散ブロックストレージ(既定 StorageClass)。chart は charts.longhorn.io、values と Ingress は git(multi-source)。`prune: false` |
+| 1 | `headlamp` | k8s の Web UI(`headlamp.site1.private.dev.morino.party`、oauth2-proxy の後ろ。Headlamp 自身のログインは無効) |
 | 1 | `monitoring` | 監視 |
 | 2 | `apps` | 個別アプリ(当面は空。Minecraft は後回し) |
 

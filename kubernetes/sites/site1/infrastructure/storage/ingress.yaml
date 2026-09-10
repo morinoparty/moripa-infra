@@ -1,0 +1,19 @@
+# Longhorn UI。private(oauth2-proxy)側のホスト名で出す。Longhorn 自身には認証が無い
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: longhorn-ui
+  namespace: longhorn-system
+spec:
+  ingressClassName: cilium
+  rules:
+    - host: longhorn.site1.private.dev.morino.party
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: longhorn-frontend
+                port:
+                  number: 80

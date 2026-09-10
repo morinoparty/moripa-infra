@@ -4,7 +4,6 @@ resources:
   - gateway-api-crds.yaml
   - cilium.yaml
   - cert-manager.yaml
-  - ingress.yaml
   - storage.yaml
   - headlamp.yaml
   - monitoring.yaml

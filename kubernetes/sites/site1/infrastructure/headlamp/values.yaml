@@ -1,8 +1,13 @@
 # Headlamp の values。in-cluster で動かし、chart が作る ServiceAccount headlamp に
-# cluster-admin を束ねる(既定)。公開は HTTPRoute(httproute.yaml)で行うので ingress は使わない
+# cluster-admin を束ねる。公開は Ingress(ingress.yaml)で行うので chart の ingress は使わない
 config:
   inCluster: true
   baseURL: ""
+  # Headlamp 自身のログイン(トークン / OIDC)を無効にし、全リクエストを Pod の
+  # ServiceAccount(= cluster-admin)として扱う。前段の oauth2-proxy
+  # (GitHub org morinoparty / MineAuth staff)が唯一の認証になる。
+  # 閲覧だけにしたいなら clusterRoleName: view に下げる
+  unsafeUseServiceAccountToken: true
 serviceAccount:
   create: true
   name: headlamp

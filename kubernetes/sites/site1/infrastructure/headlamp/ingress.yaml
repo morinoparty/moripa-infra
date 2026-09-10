@@ -1,0 +1,21 @@
+# Headlamp UI。private(oauth2-proxy)側のホスト名で出す。Headlamp 自身のログインは無効
+# (values.yaml の unsafeUseServiceAccountToken)なので、oauth2-proxy を通った人は
+# そのまま cluster-admin になる
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: headlamp
+  namespace: headlamp
+spec:
+  ingressClassName: cilium
+  rules:
+    - host: headlamp.site1.private.dev.morino.party
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: headlamp
+                port:
+                  number: 80

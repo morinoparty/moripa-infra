@@ -1,0 +1,19 @@
+# Hermes のダッシュボード。認証は前段の oauth2-proxy(private ホスト)
+# + Hermes 自身の basic 認証(Secret hermes-secrets の dashboard-username / dashboard-password)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hermes-dashboard
+spec:
+  ingressClassName: cilium
+  rules:
+    - host: hermes.site1.private.dev.morino.party
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hermes
+                port:
+                  number: 9119

@@ -32,7 +32,7 @@ IP を直接使う。
 
 HTTP/HTTPS の公開は Linode 上の Caddy が担う。`<app>.site<N>.dev.morino.party` /
 `<app>.site<N>.private.dev.morino.party` の規約に従う名前なら Caddy 側の変更は
-不要で、対象拠点に HTTPRoute を置くだけでよい(`/docs/architecture/multi-site`)。
+不要で、対象拠点に Ingress(`ingressClassName: cilium`)を置くだけでよい(`/docs/architecture/multi-site`)。
 
 規約外の名前を足すときは `gateway/caddy/Caddyfile` を編集して `main` に push する。
 ハブの `caddy-gitops.timer` が 3 分ごとに取り込み、`caddy validate` を通してから
@@ -75,8 +75,8 @@ HTTP 以外のサービス(将来の Minecraft など)は Linode 上の HAProxy 
 |---|---|---|
 | `https://argocd.site1.dev.morino.party/` | ArgoCD | ArgoCD の admin(公開側ホスト名。ArgoCD 自身の認証があるため) |
 | `https://longhorn.site1.private.dev.morino.party/` | Longhorn | なし(oauth2-proxy のみ) |
-| `https://headlamp.site1.private.dev.morino.party/` | Headlamp(k8s UI) | トークン。`kubectl -n headlamp get secret headlamp-admin-token -o jsonpath='{.data.token}' \| base64 -d` |
-| `https://hermes.site1.private.dev.morino.party/` | Hermes ダッシュボード | basic 認証(`~/keys/hermes-dashboard.password`) |
+| `https://headlamp.site1.private.dev.morino.party/` | Headlamp(k8s UI) | なし(oauth2-proxy のみ。通った人は cluster-admin) |
+| `https://hermes.site1.private.dev.morino.party/` | Hermes ダッシュボード | basic 認証(sops の `hermes-secrets`) |
 
 ## Linode 障害時の挙動
 

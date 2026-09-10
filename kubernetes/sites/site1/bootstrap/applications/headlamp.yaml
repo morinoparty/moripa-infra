@@ -1,6 +1,6 @@
-# Headlamp(k8s の Web UI)。chart は kubernetes-sigs.github.io/headlamp、values と HTTPRoute は git。
-# 認証は oauth2-proxy(private ホスト)の後ろで Headlamp 自身のトークンログイン
-# (ServiceAccount headlamp の cluster-admin トークン。取り方は docs/admin/operations)
+# Headlamp(k8s の Web UI)。chart は kubernetes-sigs.github.io/headlamp、values と Ingress は git。
+# 認証は前段の oauth2-proxy(private ホスト)のみ。Headlamp 自身のログインは無効
+# (values の unsafeUseServiceAccountToken: 通った人は SA headlamp = cluster-admin)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

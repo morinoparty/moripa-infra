@@ -1,5 +1,5 @@
 # Longhorn(分散ブロックストレージ、既定 StorageClass)。
-# multi-source: chart は charts.longhorn.io、values と HTTPRoute は git。
+# multi-source: chart は charts.longhorn.io、values と Ingress は git。
 # targetRevision は ansible/group_vars/all/versions.yml の longhorn_version と
 # 一致させること(make check-consistency で検査)。
 # prune: false — CRD/ボリュームが prune で消えると実データを失うため

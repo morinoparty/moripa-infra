@@ -12,7 +12,7 @@
 }
 
 {% for site in ['site1', 'site2'] %}
-# {{ site }} の全クラスタノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送。
+# {{ site }} の全クラスタノード :80(Cilium の ingress controller、hostNetwork)へ wg 越しに転送。
 # ヘルスチェックは passive のみ: ホスト名不一致時に Envoy が 404 を返すため
 # active check(health_uri)は使えない。失敗した upstream は fail_duration の間
 # 外され、lb_try_duration 内で別ノードへ再試行する

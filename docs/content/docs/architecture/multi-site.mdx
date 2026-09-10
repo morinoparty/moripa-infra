@@ -37,8 +37,8 @@ Linode 上の Caddy はワイルドカードで受け、ホスト名の階層で
 | `<app>.site2.private.dev.morino.party` | site2 | 同上 |
 
 この規約に従う限り、新しいアプリを公開する手順は **対象拠点のクラスタに
-その `hostnames` を持つ HTTPRoute を `kubernetes/sites/<site>/apps/` に置く**
-(Gateway `public` を parentRef に)だけ。DNS はワイルドカード(`*.site1.dev` 等)
+その `host` を持つ Ingress(`ingressClassName: cilium`)を `kubernetes/sites/<site>/apps/` に置く**
+だけ。DNS はワイルドカード(`*.site1.dev` 等)
 を登録済みなので個別の A レコードも要らず、証明書もワイルドカード(Cloudflare
 DNS-01)で取得済み。
 

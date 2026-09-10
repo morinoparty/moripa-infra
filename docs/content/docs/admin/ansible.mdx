@@ -139,12 +139,12 @@ control-plane が 1台のため、node1 の全損に備えて etcd スナップ�
   `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
   で backend の両ノードが UP。`tcp_routes` が空のうちは listen も backend も無い
 - ✅ Caddy: 規約に沿った名前(例 `test.site1.dev.morino.party`)で
-  `curl -v https://<host>` が対象拠点の Gateway に届く(HTTPRoute 未作成なら
+  `curl -v https://<host>` が対象拠点の Envoy に届く(Ingress 未作成なら
   Envoy の 404 が返るのが正常)。DNS 反映前は証明書が無いので HTTPS は
   検証できない。`curl -v --resolve <host>:80:<linode_ip> http://<host>` で
   Caddy の HTTPS リダイレクト(308)が返れば Caddy が受けている
 - ✅ Caddy 経由のリクエストで、アプリ側に `X-Forwarded-For` としてクライアントの
-  実IPが届く(Cilium の `gatewayAPI.xffNumTrustedHops: 1` の検証)
+  実IPが先頭に入って届く(末尾はハブの `10.100.0.1`)
 - ✅ Pod 内から大きな HTTPS レスポンスを取得できる(MSS clamp / MTU の検証)
 
 <Callout title="拠点ごとの独立性">

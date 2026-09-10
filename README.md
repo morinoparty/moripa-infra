@@ -84,8 +84,7 @@ moripa-infra/
 │       │   │   └── root-app.yaml
 │       │   ├── infrastructure/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
-│       │   │   ├── ingress/            # Cilium Gateway API(hostNetwork :80、TLS は Caddy 側)
-│       │   │   ├── storage/            # Longhorn の values + UI の HTTPRoute(private ホスト名)
+│       │   │   ├── storage/            # Longhorn の values + UI の Ingress(private ホスト名)
 │       │   │   └── monitoring/
 │       │   └── apps/               # 個別アプリの Application(当面は空。Minecraft は後回し)
 │       └── site2/              # site1 と同構造

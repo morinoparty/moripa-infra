@@ -68,7 +68,7 @@ tcp_routes: []
 #   auth.dev.morino.party                 → 認証ポータル(oauth2-proxy のコールバック先)
 # DNS は上記の各ワイルドカード(*.site1.dev 等)と auth.dev を gateway_public_ip に
 # 向ける(DNS only / 灰色雲)。証明書取得自体は A レコードに依存しない。
-# クライアント実IPは X-Forwarded-For で渡す(cilium values の xffNumTrustedHops=1 が前提)
+# クライアント実IPは X-Forwarded-For の先頭で渡す(Envoy がハブの wg アドレスを末尾に追記する)
 proxy_public_ports: [80, 443]
 # Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取得し、apt 版を
 # dpkg-divert + update-alternatives で差し替える(バージョンは versions.yml)。

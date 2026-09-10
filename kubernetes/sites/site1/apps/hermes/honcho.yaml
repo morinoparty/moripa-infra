@@ -144,7 +144,7 @@ metadata:
   name: honcho-config
 data:
   LOG_LEVEL: "INFO"
-  # クラスタ内からしか届かない(HTTPRoute 無し)ので API は無認証。
+  # クラスタ内からしか届かない(Ingress 無し)ので API は無認証。
   # true にするなら AUTH_JWT_SECRET も要る
   AUTH_USE_AUTH: "false"
   CACHE_URL: "redis://honcho-redis:6379/0?suppress=true"

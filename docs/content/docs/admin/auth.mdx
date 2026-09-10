@@ -42,7 +42,7 @@ oauth2-proxy は 1 プロセスに複数 provider を持てないため 2 プロ
    `auth_proxy` ロールが値の抜けを assert で止める
 5. 確認: `https://auth.dev.morino.party/` にログイン選択画面が出る。
    `https://<何か>.site1.private.dev.morino.party/` が選択画面へ飛び、GitHub /
-   MineAuth のどちらかでログイン後に元の URL へ戻る(HTTPRoute が無ければ
+   MineAuth のどちらかでログイン後に元の URL へ戻る(Ingress が無ければ
    Envoy の 404 が返るのが正常)。ハブ側は
    `systemctl status oauth2-proxy@github oauth2-proxy@mineauth`
 

@@ -4,7 +4,7 @@ namespace: hermes
 resources:
   - hermes.yaml
   - honcho.yaml
-  - httproute.yaml
+  - ingress.yaml
 # 秘密は sops で暗号化した secrets.sops.yaml を ksops が復号して投入する
 # (repo-server の ksops は kubernetes/common/argocd。ローカルの kubectl kustomize では
 # ビルドできないので CI / make lint-kustomize の対象外)

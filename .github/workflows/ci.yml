@@ -79,14 +79,12 @@ jobs:
                    kubernetes/common/cert-manager \
                    kubernetes/sites/site1/bootstrap/argocd \
                    kubernetes/sites/site1/bootstrap/applications \
-                   kubernetes/sites/site1/infrastructure/ingress \
                    kubernetes/sites/site1/infrastructure/storage \
                    kubernetes/sites/site1/infrastructure/headlamp \
                    kubernetes/sites/site1/infrastructure/monitoring \
                    kubernetes/sites/site1/apps \
                    kubernetes/sites/site2/bootstrap/argocd \
                    kubernetes/sites/site2/bootstrap/applications \
-                   kubernetes/sites/site2/infrastructure/ingress \
                    kubernetes/sites/site2/infrastructure/monitoring \
                    kubernetes/sites/site2/apps; do
             echo "== $d"

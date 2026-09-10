@@ -31,17 +31,30 @@ devices:
 # 南北 egress の wg 経由分はハブ側の MSS clamp で救済する(docs/content/docs/architecture/wireguard.mdx)
 MTU: 1500
 
-gatewayAPI:
+# Kubernetes Ingress(Cilium 内蔵の ingress controller)。Gateway API は使わない
+# (同じ cilium-envoy が :80 を取り合うので併用不可。Ingress の方が Headlamp などの
+# UI からも扱いやすい)。IngressClass "cilium" は chart が作る
+ingressController:
   enabled: true
+  # kubeadm クラスタには既定 IngressClass が無いので cilium を既定にする
+  # (各 Ingress にも ingressClassName: cilium を明示する)
+  default: true
+  # 全 Ingress を 1 つの Envoy listener で受ける
+  loadbalancerMode: shared
+  # TLS は Linode の Caddy が終端するので HTTP → HTTPS の強制リダイレクトはしない
+  enforceHttps: false
+  service:
+    # hostNetwork で受けるので LoadBalancer は不要(LB IPAM も無い)
+    type: ClusterIP
   # Envoy が全ノードの :80 に直接 listen し、Linode 上の Caddy(リバースプロキシ)
-  # からの転送を wg0 で受ける。TLS は Caddy が終端するので listener は HTTP のみ
+  # からの転送を wg0 で受ける。外部から :80 へは Caddy 経由でしか届かない
+  # (Cloud Firewall + nftables)。LAN 内のホストからは直接 :80 に届くので、
+  # LAN は信頼する前提。Ingress には Gateway API の xffNumTrustedHops 相当が無く、
+  # Envoy は X-Forwarded-For にハブの wg アドレス(10.100.0.1)を追記するので、
+  # クライアント実IPが要るアプリは XFF の先頭を読むこと
   hostNetwork:
     enabled: true
-  # Caddy が付ける X-Forwarded-For の右端 1 ホップ(= Caddy)を信頼し、
-  # クライアント実IPをアプリへ渡す。外部から :80 へは Caddy 経由でしか届かない
-  # (Cloud Firewall + nftables)ため、外部からの偽装 XFF は混入しない
-  # (LAN 内のホストからは直接 :80 に届くので、LAN は信頼する前提)
-  xffNumTrustedHops: 1
+    sharedListenerPort: 80
 
 envoy:
   securityContext:

@@ -80,15 +80,18 @@ spec:
     spec:
       enableServiceLinks: false
       initContainers:
-        # Git 管理の config.yaml / honcho.json を毎回配置する(Git が正)
+        # Git 管理の config.yaml / honcho.json を毎回配置する(Git が正)。
+        # 本体は /init(root)から `hermes` ユーザーで動くので、同じイメージで所有者を
+        # そのユーザーに合わせる(uid を決め打ちしない)
         - name: seed-config
-          image: busybox:1.37
+          image: nousresearch/hermes-agent:v2026.9.7
+          imagePullPolicy: IfNotPresent
           command: [/bin/sh, -c]
           args:
             - >-
               cp /seed/config.yaml /opt/data/config.yaml &&
               cp /seed/honcho.json /opt/data/honcho.json &&
-              chown -R 1000:1000 /opt/data
+              chown -R hermes:hermes /opt/data
           volumeMounts:
             - { name: hermes-data, mountPath: /opt/data }
             - { name: hermes-files, mountPath: /seed }

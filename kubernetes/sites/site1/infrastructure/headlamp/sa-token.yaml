@@ -1,0 +1,10 @@
+# ログイン用の長期トークン(ServiceAccount headlamp = cluster-admin)。
+# 取り出し: kubectl -n headlamp get secret headlamp-admin-token -o jsonpath='{.data.token}' | base64 -d
+apiVersion: v1
+kind: Secret
+metadata:
+  name: headlamp-admin-token
+  namespace: headlamp
+  annotations:
+    kubernetes.io/service-account.name: headlamp
+type: kubernetes.io/service-account-token

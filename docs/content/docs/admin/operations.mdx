@@ -69,6 +69,15 @@ HTTP 以外のサービス(将来の Minecraft など)は Linode 上の HAProxy 
   Velocity の forwarding secret だけが防壁になる
 - 状態確認: `ssh moripa@10.100.0.1 'echo "show stat" | sudo socat stdio /run/haproxy/admin.sock'`
 
+## 管理 UI の一覧(すべて oauth2-proxy の後ろ)
+
+| URL | 中身 | ログイン |
+|---|---|---|
+| `https://argocd.site1.dev.morino.party/` | ArgoCD | ArgoCD の admin(公開側ホスト名。ArgoCD 自身の認証があるため) |
+| `https://longhorn.site1.private.dev.morino.party/` | Longhorn | なし(oauth2-proxy のみ) |
+| `https://headlamp.site1.private.dev.morino.party/` | Headlamp(k8s UI) | トークン。`kubectl -n headlamp get secret headlamp-admin-token -o jsonpath='{.data.token}' \| base64 -d` |
+| `https://hermes.site1.private.dev.morino.party/` | Hermes ダッシュボード | basic 認証(`~/keys/hermes-dashboard.password`) |
+
 ## Linode 障害時の挙動
 
 クラスタ内通信(etcd / API / kubelet / Pod の VXLAN)は拠点の LAN で直接

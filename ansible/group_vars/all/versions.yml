@@ -29,3 +29,6 @@ oauth2_proxy_sha256: "4fbe902189aab713d9c0519b90a645032d4636ecb523dc36f5cc312d8e
 # Longhorn(charts.longhorn.io。kubernetes/sites/*/bootstrap/applications/storage.yaml の
 # targetRevision と一致させる。check-consistency が検査)
 longhorn_version: "1.12.1"
+
+# Headlamp(kubernetes-sigs.github.io/headlamp の chart。bootstrap/applications/headlamp.yaml と一致)
+headlamp_version: "0.45.0"

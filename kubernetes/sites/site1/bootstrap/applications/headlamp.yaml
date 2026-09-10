@@ -1,0 +1,36 @@
+# Headlamp(k8s の Web UI)。chart は kubernetes-sigs.github.io/headlamp、values と HTTPRoute は git。
+# 認証は oauth2-proxy(private ホスト)の後ろで Headlamp 自身のトークンログイン
+# (ServiceAccount headlamp の cluster-admin トークン。取り方は docs/admin/operations)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: headlamp
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/headlamp
+      chart: headlamp
+      targetRevision: 0.45.0
+      helm:
+        releaseName: headlamp
+        valueFiles:
+          - $values/kubernetes/sites/site1/infrastructure/headlamp/values.yaml
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
+      targetRevision: main
+      path: kubernetes/sites/site1/infrastructure/headlamp
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: headlamp
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

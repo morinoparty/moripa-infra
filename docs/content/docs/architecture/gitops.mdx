@@ -56,6 +56,7 @@ graph LR
 | -1 | `cert-manager` | クラスタ内部向け証明書の仕組み(公開サービスの TLS は Linode 上の Caddy が終端するため必須ではない) |
 | 0 | `ingress` | Cilium Gateway API(hostNetwork、:80。Caddy からの転送を受ける) |
 | 0 | `longhorn` | 分散ブロックストレージ(既定 StorageClass)。chart は charts.longhorn.io、values と HTTPRoute は git(multi-source)。`prune: false` |
+| 1 | `headlamp` | k8s の Web UI(`headlamp.site1.private.dev.morino.party`、oauth2-proxy の後ろでトークンログイン) |
 | 1 | `monitoring` | 監視 |
 | 2 | `apps` | 個別アプリ(当面は空。Minecraft は後回し) |
 

@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Headlamp 本体は bootstrap/applications/headlamp.yaml の Helm source。ここは付随リソース
+resources:
+  - httproute.yaml
+  - sa-token.yaml

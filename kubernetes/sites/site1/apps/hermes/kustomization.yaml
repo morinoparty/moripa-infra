@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hermes
+resources:
+  - hermes.yaml
+  - honcho.yaml
+  - searxng.yaml
+  - httproute.yaml
+# 秘密は sops で暗号化した secrets.sops.yaml を ksops が復号して投入する
+# (repo-server の ksops は kubernetes/common/argocd。ローカルの kubectl kustomize では
+# ビルドできないので CI / make lint-kustomize の対象外)
+generators:
+  - secret-generator.yaml

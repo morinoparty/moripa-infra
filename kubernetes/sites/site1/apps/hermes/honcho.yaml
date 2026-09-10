@@ -1,0 +1,294 @@
+# Honcho(自前ホストのメモリ層)。postgres(pgvector)/ redis / API / deriver の 4 つ。
+# LLM はできるだけ安く: 生成系(deriver / summary / dialectic / dream)はすべて OpenCode Go の
+# 定額枠(glm-5.3-flash、月 $60 相当の枠)に載せ、Go に無い embeddings だけ OpenRouter の
+# text-embedding-3-small($0.02/M)を使う。
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: honcho-postgres
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: honcho-postgres-init
+data:
+  # pgvector は拡張を同梱するが有効化はしない。Honcho のマイグレーションは vector 型が前提
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-postgres
+  labels:
+    app: honcho-postgres
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: honcho-postgres
+  template:
+    metadata:
+      labels:
+        app: honcho-postgres
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg15
+          imagePullPolicy: IfNotPresent
+          args: [postgres, -c, max_connections=200]
+          env:
+            - { name: POSTGRES_DB, value: honcho }
+            - { name: POSTGRES_USER, value: honcho }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: postgres-password } }
+            # ボリューム直下の lost+found を initdb が嫌うのでサブディレクトリに置く
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d/init.sql, subPath: init.sql }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          livenessProbe:
+            exec: { command: [pg_isready, -U, honcho, -d, honcho] }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec: { command: [pg_isready, -U, honcho, -d, honcho] }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: honcho-postgres
+        - name: init
+          configMap:
+            name: honcho-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: honcho-postgres
+spec:
+  selector:
+    app: honcho-postgres
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-redis
+  labels:
+    app: honcho-redis
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: honcho-redis
+  template:
+    metadata:
+      labels:
+        app: honcho-redis
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: redis
+          image: redis:8.2
+          imagePullPolicy: IfNotPresent
+          # キャッシュ専用(消えても Honcho が再導出する)なので永続化しない
+          args: [redis-server, --save, "", --appendonly, "no"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          livenessProbe:
+            exec: { command: [redis-cli, ping] }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            exec: { command: [redis-cli, ping] }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: honcho-redis
+spec:
+  selector:
+    app: honcho-redis
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: honcho-config
+data:
+  LOG_LEVEL: "INFO"
+  # クラスタ内からしか届かない(HTTPRoute 無し)ので API は無認証。
+  # true にするなら AUTH_JWT_SECRET も要る
+  AUTH_USE_AUTH: "false"
+  CACHE_URL: "redis://honcho-redis:6379/0?suppress=true"
+  CACHE_ENABLED: "true"
+
+  # 各モジュールの transport は openai(OpenAI 互換)。BASE_URL で向き先を変える。
+  # 鍵は既定で LLM_OPENAI_API_KEY(= OpenCode Go)、embeddings だけ API_KEY_ENV で
+  # OPENROUTER_API_KEY に切り替える
+  EMBEDDING_MODEL_CONFIG__TRANSPORT: "openai"
+  EMBEDDING_MODEL_CONFIG__MODEL: "openai/text-embedding-3-small"
+  EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  EMBEDDING_MODEL_CONFIG__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
+
+  DERIVER_MODEL_CONFIG__TRANSPORT: "openai"
+  DERIVER_MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DERIVER_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  # json_schema 非対応のプロバイダ向け
+  DERIVER_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+
+  SUMMARY_MODEL_CONFIG__TRANSPORT: "openai"
+  SUMMARY_MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  SUMMARY_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  SUMMARY_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+
+  # dialectic は推論レベルごとにモデルを持てるが、全部同じ安いモデルにする
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+
+  # dream = アイドル時の観察の統合
+  DREAM_DEDUCTION_MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DREAM_DEDUCTION_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DREAM_DEDUCTION_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+  DREAM_INDUCTION_MODEL_CONFIG__MODEL: "glm-5.3-flash"
+  DREAM_INDUCTION_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DREAM_INDUCTION_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-api
+  labels:
+    app: honcho-api
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: honcho-api
+  template:
+    metadata:
+      labels:
+        app: honcho-api
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: api
+          # digest でピン(v2.0.x のタグはこの MODEL_CONFIG 形式の設定を受け付けない。
+          # Yggdrasill で動作確認済みの 2026-08-20 ビルド)
+          image: ghcr.io/plastic-labs/honcho@sha256:0ab8535b36ca440dd4436d129aeff222c957471d5778ab91b56ee1151783a44d
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          # 既定の CMD はマイグレーションを飛ばすので、provision_db.py → fastapi の entrypoint を使う
+          command: [sh, docker/entrypoint.sh]
+          envFrom:
+            - configMapRef:
+                name: honcho-config
+          env:
+            - name: DB_CONNECTION_URI
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: db-connection-uri } }
+            - name: LLM_OPENAI_API_KEY
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: opencode-go-api-key } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: openrouter-api-key } }
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: honcho
+spec:
+  selector:
+    app: honcho-api
+  ports:
+    - { name: http, port: 8000, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-deriver
+  labels:
+    app: honcho-deriver
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: honcho-deriver
+  template:
+    metadata:
+      labels:
+        app: honcho-deriver
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: deriver
+          image: ghcr.io/plastic-labs/honcho@sha256:0ab8535b36ca440dd4436d129aeff222c957471d5778ab91b56ee1151783a44d
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          # バックグラウンドワーカー(API が書いたキューを観察に変える)。HTTP は無いので probe 無し
+          command: [python, -m, src.deriver]
+          envFrom:
+            - configMapRef:
+                name: honcho-config
+          env:
+            - name: DB_CONNECTION_URI
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: db-connection-uri } }
+            - name: LLM_OPENAI_API_KEY
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: opencode-go-api-key } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: honcho-secrets, key: openrouter-api-key } }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }

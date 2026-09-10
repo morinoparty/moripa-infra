@@ -1,0 +1,173 @@
+# Hermes 本体(gateway モード: Discord / ダッシュボード)。
+# 設定は GitOps で持つ: config.yaml と honcho.json は ConfigMap から起動時に
+# $HERMES_HOME(/opt/data、Longhorn PVC)へ毎回コピーする(Git が正)。
+# 秘密(API キー、Discord トークン、ダッシュボードの basic 認証)は Secret hermes-secrets。
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-config
+data:
+  # 同梱の searxng 検索ツール: SEARXNG_URL があるだけで有効になる
+  SEARXNG_URL: "http://searxng:8080"
+  # Discord で bot を使えるユーザー ID(カンマ区切り)。DISCORD_BOT_TOKEN が Secret にあれば
+  # Discord ゲートウェイが有効になる
+  DISCORD_ALLOWED_USERS: "574510037012185088"
+  # Web ダッシュボード(0.0.0.0 bind のため basic 認証必須 → Secret)
+  HERMES_DASHBOARD: "1"
+  # 自前ホストの Honcho(honcho.yaml)。base URL を与えると self-hosted 経路になる
+  HONCHO_BASE_URL: "http://honcho:8000"
+  # Lightpanda(同 Pod のサイドカー、CDP は loopback のみ)
+  BROWSER_CDP_URL: "http://127.0.0.1:9222"
+  TZ: "Asia/Tokyo"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-files
+data:
+  # $HERMES_HOME/config.yaml。秘密以外の設定はここ(秘密は .env 相当の環境変数)
+  config.yaml: |
+    # OpenCode Go(月額定額)のモデル。glm-5.3-flash は月 $60 相当の枠で一番余裕がある。
+    # 変えるときはここを編集して push(起動時に上書きされる)
+    model: glm-5.3-flash
+    provider: opencode-go
+    memory:
+      provider: honcho
+      memory_enabled: true
+      user_profile_enabled: true
+  # $HERMES_HOME/honcho.json(Honcho プラグインの設定)。
+  # 単一運用者なので Discord などどのゲートウェイから来ても同じ peer(nikomaru)に集約する
+  honcho.json: |
+    {
+      "baseUrl": "http://honcho:8000",
+      "workspace": "hermes",
+      "peerName": "nikomaru",
+      "aiPeer": "hermes",
+      "pinUserPeer": true,
+      "recallMode": "hybrid"
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes
+  labels:
+    app: hermes
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    # RWO の PVC: 旧 Pod が離してから新 Pod が掴む
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hermes
+  template:
+    metadata:
+      labels:
+        app: hermes
+    spec:
+      enableServiceLinks: false
+      initContainers:
+        # Git 管理の config.yaml / honcho.json を毎回配置する(Git が正)
+        - name: seed-config
+          image: busybox:1.37
+          command: [/bin/sh, -c]
+          args:
+            - >-
+              cp /seed/config.yaml /opt/data/config.yaml &&
+              cp /seed/honcho.json /opt/data/honcho.json &&
+              chown -R 1000:1000 /opt/data
+          volumeMounts:
+            - { name: hermes-data, mountPath: /opt/data }
+            - { name: hermes-files, mountPath: /seed }
+      containers:
+        - name: hermes
+          # リリースタグでピン。更新は versions と同じく手動で上げる
+          image: nousresearch/hermes-agent:v2026.9.7
+          imagePullPolicy: IfNotPresent
+          args: [gateway, run]
+          envFrom:
+            - configMapRef:
+                name: hermes-config
+          env:
+            # 本体のモデルは OpenCode Go(定額)。OpenRouter は補助用途に残す(任意)
+            - name: OPENCODE_GO_API_KEY
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: opencode-go-api-key } }
+            - name: OPENROUTER_API_KEY
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: openrouter-api-key, optional: true } }
+            - name: DISCORD_BOT_TOKEN
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: discord-bot-token, optional: true } }
+            - name: HERMES_DASHBOARD_BASIC_AUTH_USERNAME
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: dashboard-username } }
+            - name: HERMES_DASHBOARD_BASIC_AUTH_PASSWORD
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: dashboard-password } }
+          ports:
+            - name: dashboard
+              containerPort: 9119
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /opt/data
+          # limits は付けない(コンテキスト次第で振れる。付けると会話中に OOMKill になる)
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            exec:
+              command: [/opt/hermes/.venv/bin/hermes, gateway, status]
+            initialDelaySeconds: 90
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            tcpSocket:
+              port: dashboard
+            initialDelaySeconds: 20
+            periodSeconds: 15
+        # エージェント用ブラウザ。CDP は loopback のみ(Pod IP に出さない)。
+        # probe は付けない(127.0.0.1 bind なので kubelet の tcp probe が届かず殺してしまう)
+        - name: lightpanda
+          image: lightpanda/browser:nightly
+          imagePullPolicy: IfNotPresent
+          command: [/bin/lightpanda]
+          args: [serve, --host, 127.0.0.1, --port, "9222", --log_level, info]
+          env:
+            - { name: TZ, value: "Asia/Tokyo" }
+            - { name: LANG, value: "ja-JP" }
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+      volumes:
+        - name: hermes-data
+          persistentVolumeClaim:
+            claimName: hermes-data
+        - name: hermes-files
+          configMap:
+            name: hermes-files
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes
+  labels:
+    app: hermes
+spec:
+  selector:
+    app: hermes
+  ports:
+    - name: dashboard
+      port: 9119
+      targetPort: dashboard

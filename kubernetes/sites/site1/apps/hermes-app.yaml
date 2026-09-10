@@ -1,0 +1,23 @@
+# Hermes(Nous Research の常駐エージェント)+ Honcho(自前ホストのメモリ層)+ SearXNG。
+# ~/home/Yggdrasill の manifests/hermes を移植したもの。秘密は ksops(secrets.sops.yaml)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hermes
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/morinoparty/moripa-infra.git
+    targetRevision: main
+    path: kubernetes/sites/site1/apps/hermes
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hermes
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

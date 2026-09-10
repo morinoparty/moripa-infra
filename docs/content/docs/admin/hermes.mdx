@@ -1,0 +1,52 @@
+---
+title: Hermes(エージェント)
+description: site1 で動かす Hermes + Honcho + SearXNG の構成、秘密の置き場所、モデルの選び方
+---
+
+`kubernetes/sites/site1/apps/hermes/` を ArgoCD の `hermes` Application(`apps` の配下)が
+同期する。~/home/Yggdrasill の `manifests/hermes` を移植したもので、違いは
+ストレージ(hostPath → Longhorn PVC)、公開経路(Ingress → HTTPRoute + oauth2-proxy)、
+秘密(SealedSecret → sops + ksops)、そしてモデルの選び方。
+
+| コンポーネント | 役割 | LLM |
+|---|---|---|
+| `hermes` | 本体(Discord ゲートウェイ + ダッシュボード)。サイドカーに Lightpanda ブラウザ | OpenCode Go(`glm-5.3-flash`、`config.yaml` で変更) |
+| `honcho-api` / `honcho-deriver` | メモリ層(観察の導出・要約・dialectic・dream) | OpenCode Go(`glm-5.3-flash`、定額枠) |
+| embeddings | Honcho のベクトル化 | OpenRouter `openai/text-embedding-3-small`(Go に embeddings が無いため) |
+| `honcho-postgres`(pgvector)/ `honcho-redis` | 永続化 / キャッシュ | — |
+| `searxng` | Web 検索(クラスタ内のみ) | — |
+
+OpenCode Go は月額定額なので、Honcho の裏で回る細かい呼び出しをすべて Go に載せるのが
+いちばん安い。`glm-5.3-flash` を選んだのは Go の中で月間の枠(`$60` 相当)が最も大きいから。
+
+## 秘密(`secrets.sops.yaml`)
+
+`kubernetes/sites/site1/apps/hermes/secrets.sops.yaml` に 2 つの Secret
+(`hermes-secrets`、`honcho-secrets`)を sops で暗号化して置き、repo-server の ksops が
+復号して投入する。編集は次のとおり。
+
+```sh
+SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey sops kubernetes/sites/site1/apps/hermes/secrets.sops.yaml
+```
+
+| キー | 中身 | 出どころ |
+|---|---|---|
+| `opencode-go-api-key`(両 Secret) | OpenCode Go の API キー | opencode.ai の Go サブスクリプション |
+| `openrouter-api-key`(両 Secret) | OpenRouter の API キー(embeddings 用。Hermes 側は任意) | openrouter.ai |
+| `discord-bot-token` | Discord bot のトークン(無ければ Discord ゲートウェイは無効) | Discord Developer Portal |
+| `dashboard-username` / `dashboard-password` | ダッシュボードの basic 認証 | 生成済み(`~/keys/hermes-dashboard.password`) |
+| `searxng-secret` / `postgres-password` / `db-connection-uri` | 内部用 | 生成済み |
+
+ダッシュボードは `https://hermes.site1.private.dev.morino.party/`(oauth2-proxy → basic 認証)。
+
+## 設定の持ち方
+
+- `config.yaml` と `honcho.json` は ConfigMap `hermes-files` にあり、Pod 起動時に
+  `$HERMES_HOME`(`/opt/data`、Longhorn PVC)へ毎回コピーする。Git が正で、
+  ダッシュボードから変えた設定は次の再起動で戻る
+- Honcho の各モジュールのモデルは ConfigMap `honcho-config` の
+  `*_MODEL_CONFIG__MODEL` / `__OVERRIDES__BASE_URL` で切り替える
+- Hermes のイメージはリリースタグでピン(`nousresearch/hermes-agent:v2026.9.7`)。
+  Honcho は動作確認済みビルドの digest でピン
+- ksops の generator を含むため、このディレクトリは CI / `make lint-kustomize` の
+  kustomize build 対象外(generator を外せば `kubectl kustomize` で検証できる)

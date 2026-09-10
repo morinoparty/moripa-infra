@@ -1,0 +1,179 @@
+# SearXNG(Hermes の Web 検索用、クラスタ内のみ)。設定は Yggdrasill から流用
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: searxng-settings
+data:
+  settings.yml: |
+    general:
+      debug: false
+      instance_name: "SearXNG"
+      privacypolicy_url: false
+      donation_url: false
+      contact_url: false
+      enable_metrics: false
+    # DOI resolver settings must be at root level
+    doi_resolvers:
+      oadoi.org: "https://oadoi.org/"
+      doi.org: "https://doi.org/"
+      doaj.org: "https://doaj.org/"
+    default_doi_resolver: "oadoi.org"
+    search:
+      safe_search: 0
+      autocomplete: "duckduckgo"
+      # "ja" biased every search toward Japanese-language pages even for
+      # English technical queries; let the query itself decide instead.
+      default_lang: "all"
+      # Hermes の検索ツールが JSON API を叩くため必須
+      formats:
+        - html
+        - json
+    server:
+      port: 8080
+      bind_address: "0.0.0.0"
+      secret_key: "replaced-by-SEARXNG_SECRET-env"
+      limiter: false
+      image_proxy: false
+    # This list REPLACES SearXNG's defaults rather than merging with them, so
+    # anything absent here is simply unavailable. Measured 2026-08-21 from this
+    # cluster's IP: google returned 0 results silently on every query and
+    # duckduckgo raised CAPTCHA on every query, leaving bing as the only engine
+    # actually answering — which is why searches came back with unrelated hits.
+    engines:
+      - name: bing
+        engine: bing
+        shortcut: bi
+        categories: [general, web]
+        enabled: true
+      # Works and returns the best results of the lot, but Brave rate-limits
+      # this IP quickly — SearXNG suspends it on "too many requests" and brings
+      # it back on its own, so bing carries the query in the meantime.
+      - name: brave
+        engine: brave
+        shortcut: br
+        categories: [general, web]
+        brave_category: search
+        time_range_support: true
+        paging: true
+        enabled: true
+      # Measured 2026-08-21: mojeek returns 0 results silently, startpage
+      # raises CAPTCHA and qwant returns access denied from this IP. Left
+      # defined so they can be re-tested with !mjk / !sp / !qw later.
+      - name: mojeek
+        engine: mojeek
+        shortcut: mjk
+        categories: [general, web]
+        disabled: true
+      - name: startpage
+        engine: startpage
+        shortcut: sp
+        startpage_categ: web
+        categories: [general, web]
+        disabled: true
+      - name: qwant
+        engine: qwant
+        shortcut: qw
+        qwant_categ: web
+        categories: [general, web]
+        disabled: true
+      # Kept reachable via !go / !ddg for the day they start working again,
+      # but out of the default mix: google contributes nothing and duckduckgo
+      # only adds a CAPTCHA stacktrace plus latency to every search.
+      - name: google
+        engine: google
+        shortcut: go
+        categories: [general, web]
+        disabled: true
+      - name: duckduckgo
+        engine: duckduckgo
+        shortcut: ddg
+        categories: [general, web]
+        disabled: true
+      # Encyclopedia hits are indistinguishable from web hits in the JSON API
+      # the agent consumes, so a query like "月額プラン" surfaced the article
+      # on the Moon. Down-weighted rather than dropped.
+      - name: wikipedia
+        engine: wikipedia
+        shortcut: wp
+        categories: [general, web]
+        enabled: true
+        weight: 0.3
+    ui:
+      static_use_hash: true
+      default_theme: simple
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searxng
+  labels:
+    app: searxng
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: searxng
+  template:
+    metadata:
+      annotations:
+        # settings.yml is mounted with subPath, which never picks up ConfigMap
+        # updates in place. Bump this to roll the pod onto a new config.
+        moripa.morino.party/searxng-config-revision: "1"
+      labels:
+        app: searxng
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: searxng
+          image: searxng/searxng:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # settings.yml の secret_key を上書き(Secret hermes-secrets)
+            - name: SEARXNG_SECRET
+              valueFrom: { secretKeyRef: { name: hermes-secrets, key: searxng-secret } }
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: settings
+              mountPath: /etc/searxng/settings.yml
+              subPath: settings.yml
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: settings
+          configMap:
+            name: searxng-settings
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: searxng
+  labels:
+    app: searxng
+spec:
+  selector:
+    app: searxng
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

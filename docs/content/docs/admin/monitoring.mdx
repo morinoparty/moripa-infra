@@ -11,7 +11,7 @@ description: site1 の kube-prometheus-stack(node-exporter で 3 ノードを監
 | コンポーネント | 中身 |
 |---|---|
 | Prometheus Operator | ServiceMonitor / PodMonitor / PrometheusRule 等の CRD を Prometheus 設定に変換する。webhook 証明書は cert-manager |
-| Prometheus | 保持 15 日 / 18GB(Longhorn PVC 20Gi)。ラベル無しの ServiceMonitor 等もすべて拾う設定 |
+| Prometheus | 保持 30 日 / 18GB(Longhorn PVC 20Gi。実測約 1,500 samples/s なら 30 日で 8GB 前後)。ラベル無しの ServiceMonitor 等もすべて拾う設定 |
 | node-exporter | DaemonSet(hostNetwork `:9100`)。site1 の 3 ノードすべてに乗る |
 | kube-state-metrics | Deployment / Pod / PVC などのオブジェクト状態 |
 | Grafana | Longhorn PVC 5Gi(Recreate)。chart 同梱の Kubernetes ダッシュボード + Prometheus データソースが自動で入る |

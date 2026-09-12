@@ -53,8 +53,9 @@ prometheus:
     enabled: false
   prometheusSpec:
     externalUrl: https://prometheus.site1.private.dev.morino.party/
-    retention: 15d
-    # PVC(20Gi)より小さく。超えたら古いブロックから消す
+    # 30 日。実測 約 1,500 samples/s(3 ノード)なら 30 日で 8GB 前後なので 20Gi に収まる
+    retention: 30d
+    # PVC(20Gi)より小さく。超えたら古いブロックから消す(保持日数より先に効く安全弁)
     retentionSize: 18GB
     storageSpec:
       volumeClaimTemplate:

@@ -77,6 +77,8 @@ HTTP 以外のサービス(将来の Minecraft など)は Linode 上の HAProxy 
 | `https://longhorn.site1.private.dev.morino.party/` | Longhorn | なし(oauth2-proxy のみ) |
 | `https://headlamp.site1.private.dev.morino.party/` | Headlamp(k8s UI) | なし(oauth2-proxy のみ。通った人は cluster-admin) |
 | `https://hermes.site1.private.dev.morino.party/` | Hermes ダッシュボード | basic 認証(sops の `hermes-secrets`) |
+| `https://grafana.site1.private.dev.morino.party/` | Grafana | なし(oauth2-proxy のユーザーで自動サインアップ、Admin) |
+| `https://prometheus.site1.private.dev.morino.party/` | Prometheus | なし(oauth2-proxy のみ) |
 
 ## Linode 障害時の挙動
 

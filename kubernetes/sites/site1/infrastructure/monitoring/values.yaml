@@ -1,0 +1,144 @@
+# kube-prometheus-stack の values(site1)。release 名は monitoring
+# (Service 名: monitoring-grafana / monitoring-kube-prometheus-prometheus)。
+#
+# 方針:
+# - Prometheus は pull 型。監視対象(node-exporter 等)は Prometheus から届けばよく、
+#   外から Prometheus に「データを入れる」経路は要らない。site2 のノードは wg 越しに
+#   10.100.0.2x:9100 を additionalScrapeConfigs で足せば同じ Prometheus で見られる。
+#   Prometheus 自身に認証は無いので UI は private ホスト(oauth2-proxy)にだけ出す。
+#   wg で届かない外部ソースから push したくなったら、remote_write(/api/v1/write)だけを
+#   別の公開ホスト名 + Caddy 側のトークン検査で出す(UI は出さない)。
+# - Grafana は前段の oauth2-proxy を信頼する auth.proxy(X-Auth-Request-User)。
+#   Caddy がクライアント持ち込みの同名ヘッダを必ず捨てて付け直し、ノードの nft が LAN からの
+#   :80 を落とすので、外からこのヘッダを詐称する経路は無い(クラスタ内 Pod からは可能だが、
+#   それは Headlamp と同じ信頼境界)。
+# - kubeadm は controller-manager / scheduler / etcd のメトリクスを 127.0.0.1 にしか出さず、
+#   kube-proxy は Cilium に置き換えて存在しないので、それらのスクレイプは切る(常時 down の
+#   ターゲットと *Down アラートを出さないため)
+
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+
+# 通知先が未定なので Alertmanager は止めておく(有効化するときは Discord webhook の receiver を足す)
+alertmanager:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheusOperator:
+  admissionWebhooks:
+    # cert-manager(wave -1)で webhook 証明書を出す。Helm hook の Job に頼らない
+    certManager:
+      enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+prometheus:
+  ingress:
+    enabled: false
+  prometheusSpec:
+    externalUrl: https://prometheus.site1.private.dev.morino.party/
+    retention: 15d
+    # PVC(20Gi)より小さく。超えたら古いブロックから消す
+    retentionSize: 18GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 20Gi
+    # ラベル無しの ServiceMonitor / PodMonitor / PrometheusRule / Probe / ScrapeConfig も拾う
+    # (後から Longhorn / Cilium / ArgoCD の ServiceMonitor を置くだけで対象になる)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+
+# node-exporter は DaemonSet(hostNetwork :9100)で 3 ノードすべてに乗る。
+# Prometheus は Pod からノード IP の :9100 に届く(wg0 経由ではない)ので、
+# ノードの nft フィルタ(:80 のみ)には触らない
+nodeExporter:
+  enabled: true
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: Asia/Tokyo
+  # 管理者は sops の Secret grafana-admin(admin-user / admin-password)。
+  # chart 既定の prom-operator を使わないため
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: false
+  persistence:
+    enabled: true
+    type: pvc
+    storageClassName: longhorn
+    size: 5Gi
+  # RWO の PVC なので RollingUpdate だと新旧 Pod がボリュームを取り合って止まる
+  deploymentStrategy:
+    type: Recreate
+  grafana.ini:
+    server:
+      root_url: https://grafana.site1.private.dev.morino.party/
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+    auth:
+      # ログイン画面は出さない(前段の oauth2-proxy が唯一の認証)
+      disable_login_form: true
+      disable_signout_menu: true
+    auth.proxy:
+      enabled: true
+      header_name: X-Auth-Request-User
+      header_property: username
+      auto_sign_up: true
+      headers: "Email:X-Auth-Request-Email Name:X-Auth-Request-Preferred-Username"
+      enable_login_token: true
+    users:
+      # oauth2-proxy を通った人(GitHub org morinoparty / MineAuth staff)は Headlamp で
+      # cluster-admin なので、Grafana も Admin で揃える。閲覧だけにするなら Viewer
+      auto_assign_org_role: Admin
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

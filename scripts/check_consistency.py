@@ -157,6 +157,23 @@ for site in SITES:
         f"[{site}] longhorn App targetRevision={chart_rev} != longhorn_version={versions['longhorn_version']}",
     )
 
+# --- monitoring(kube-prometheus-stack)App targetRevision ↔ versions.yml ------------
+for site in SITES:
+    app_path = ROOT / f"kubernetes/sites/{site}/bootstrap/applications/monitoring.yaml"
+    if not app_path.exists():
+        continue
+    app = yaml.safe_load(app_path.read_text())
+    # site2 は雛形(single source)のまま
+    if "sources" not in app["spec"]:
+        continue
+    chart_rev = next(
+        s["targetRevision"] for s in app["spec"]["sources"] if s.get("chart") == "kube-prometheus-stack"
+    )
+    check(
+        chart_rev == versions["kube_prometheus_stack_version"],
+        f"[{site}] monitoring App targetRevision={chart_rev} != kube_prometheus_stack_version={versions['kube_prometheus_stack_version']}",
+    )
+
 # --- headlamp App targetRevision ↔ versions.yml -------------------------------
 for site in SITES:
     app_path = ROOT / f"kubernetes/sites/{site}/bootstrap/applications/headlamp.yaml"

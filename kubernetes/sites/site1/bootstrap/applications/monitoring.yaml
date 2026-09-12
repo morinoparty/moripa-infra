@@ -1,3 +1,7 @@
+# 監視: kube-prometheus-stack(Prometheus Operator + Prometheus + node-exporter + kube-state-metrics + Grafana)。
+# chart は prometheus-community.github.io/helm-charts、values と Ingress / Grafana 管理者 Secret(sops)は git。
+# Grafana / Prometheus の UI は private ホスト(oauth2-proxy)。Grafana は auth.proxy で
+# oauth2-proxy のユーザーをそのまま受け入れる(自身のログイン画面は出さない)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -7,10 +11,20 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
-  source:
-    repoURL: https://github.com/morinoparty/moripa-infra.git
-    targetRevision: main
-    path: kubernetes/sites/site1/infrastructure/monitoring
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 90.1.1
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/kubernetes/sites/site1/infrastructure/monitoring/values.yaml
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
+      targetRevision: main
+      path: kubernetes/sites/site1/infrastructure/monitoring
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
@@ -20,4 +34,5 @@ spec:
       prune: true
     syncOptions:
       - CreateNamespace=true
+      # Prometheus Operator の CRD は annotation 上限を超えるので server-side apply
       - ServerSideApply=true

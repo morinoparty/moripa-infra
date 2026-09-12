@@ -116,6 +116,12 @@ lint-helm: ## Cilium values (common + 各 site) が chart に対して有効か�
 	helm template headlamp headlamp --repo https://kubernetes-sigs.github.io/headlamp --version $$hv -n headlamp \
 	  -f kubernetes/sites/site1/infrastructure/headlamp/values.yaml > /dev/null \
 	  && echo "headlamp values OK (site1)" || exit 1
+	@mv=$$(grep -oP 'kube_prometheus_stack_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	kv=$$(grep -oP 'k8s_full_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	helm template monitoring kube-prometheus-stack --repo https://prometheus-community.github.io/helm-charts \
+	  --version $$mv -n monitoring --kube-version $$kv \
+	  -f kubernetes/sites/site1/infrastructure/monitoring/values.yaml > /dev/null \
+	  && echo "kube-prometheus-stack values OK (site1)" || exit 1
 
 # Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取る(ハブと同じもの)。
 # generated.caddy(Ansible 生成)を手元にレンダリングし、git の gateway/caddy/Caddyfile と
@@ -147,7 +153,6 @@ KUSTOMIZE_DIRS := \
   kubernetes/sites/site1/bootstrap/applications \
   kubernetes/sites/site1/infrastructure/storage \
   kubernetes/sites/site1/infrastructure/headlamp \
-  kubernetes/sites/site1/infrastructure/monitoring \
   kubernetes/sites/site1/apps \
   kubernetes/sites/site2/bootstrap/argocd \
   kubernetes/sites/site2/bootstrap/applications \

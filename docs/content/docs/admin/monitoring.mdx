@@ -1,0 +1,67 @@
+---
+title: 監視(Prometheus / Grafana)
+description: site1 の kube-prometheus-stack(node-exporter で 3 ノードを監視)、Grafana の SSO、Prometheus を公開しない理由
+---
+
+`monitoring` Application(wave 1)が [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+を入れる。chart は prometheus-community、values は
+`kubernetes/sites/site1/infrastructure/monitoring/values.yaml`、Ingress と Grafana の管理者 Secret(sops)は
+同ディレクトリ(multi-source)。
+
+| コンポーネント | 中身 |
+|---|---|
+| Prometheus Operator | ServiceMonitor / PodMonitor / PrometheusRule 等の CRD を Prometheus 設定に変換する。webhook 証明書は cert-manager |
+| Prometheus | 保持 15 日 / 18GB(Longhorn PVC 20Gi)。ラベル無しの ServiceMonitor 等もすべて拾う設定 |
+| node-exporter | DaemonSet(hostNetwork `:9100`)。site1 の 3 ノードすべてに乗る |
+| kube-state-metrics | Deployment / Pod / PVC などのオブジェクト状態 |
+| Grafana | Longhorn PVC 5Gi(Recreate)。chart 同梱の Kubernetes ダッシュボード + Prometheus データソースが自動で入る |
+| Alertmanager | **無効**。通知先(Discord webhook 等)を決めたら values で有効化して receiver を書く |
+
+kubeadm の controller-manager / scheduler / etcd はメトリクスを `127.0.0.1` にしか出さず、kube-proxy は
+Cilium に置き換えて存在しないため、これらのスクレイプとアラートは values で切ってある(常時 down の
+ターゲットを出さないため)。
+
+## UI とログイン
+
+| URL | ログイン |
+|---|---|
+| `https://grafana.site1.private.dev.morino.party/` | なし。oauth2-proxy を通ると `X-Auth-Request-User` のユーザーとして自動サインアップ(`auth.proxy`)。役割は **Admin** |
+| `https://prometheus.site1.private.dev.morino.party/` | なし(oauth2-proxy のみ)。Prometheus 自身に認証は無い |
+
+Grafana の `auth.proxy` は前段の oauth2-proxy を信頼する。Caddy はクライアントが持ち込んだ
+`X-Auth-Request-*` を必ず捨てて oauth2-proxy の値で付け直し、ノードの nftables が LAN からの `:80`
+を落とすので、外からこのヘッダを詐称する経路は無い(クラスタ内の Pod からは可能だが、それは
+Headlamp と同じ信頼境界)。GitHub で入ると `User` は GitHub のログイン名、MineAuth で入ると
+`sub` になるので、同じ人でも provider ごとに別ユーザーになる。
+
+管理者(`admin`)のパスワードは sops の Secret `grafana-admin` と `~/keys/grafana-admin.password`。
+ログイン画面は無効なので普段は使わず、API を叩くときの basic 認証用。
+
+## Prometheus を公開側に出さない理由
+
+Prometheus は **pull 型**で、監視対象(node-exporter 等)に Prometheus から届けばよい。
+「外からデータを追加する」経路は要らない。
+
+- 自分たちのホストはすべて wg にいる。site2 のノードは wg 越しに `10.100.0.2x:9100` を
+  `prometheus.prometheusSpec.additionalScrapeConfigs` の static target で足せば、site1 の
+  Prometheus で一緒に見られる(ハブは wg peer 同士の転送を許可済み)。
+- Prometheus 自身には認証が無く、公開すると誰でも全メトリクスを読める。UI は private ホストにだけ出す。
+- wg で届かない外部ソースから push したくなったときだけ、`remote_write`(`/api/v1/write`)を別の
+  公開ホスト名で出し、Caddy 側で bearer トークンを検査する。UI は出さない。
+
+## 監視対象を増やす
+
+- クラスタ内のアプリ: そのアプリの namespace に `ServiceMonitor` を置くだけ(ラベル不要)。
+  Longhorn / Cilium / ArgoCD は各 chart の `serviceMonitor.enabled` でも出せるが、それらの
+  Application は Prometheus Operator の CRD より先(wave -2 / 0)に同期するので、初回 bootstrap
+  では CRD が無くて失敗する。足すときは monitoring より後に同期される場所に ServiceMonitor を置く。
+- wg 上のホスト: `additionalScrapeConfigs` に static target を足す。
+
+## 確認
+
+```sh
+kubectl -n monitoring get pods                      # node-exporter 3/3、prometheus / grafana Running
+kubectl -n monitoring exec sts/prometheus-monitoring-kube-prometheus-prometheus -c prometheus -- \
+  wget -qO- http://127.0.0.1:9090/api/v1/targets | grep -o '"health":"[a-z]*"' | sort | uniq -c
+# "up" だけが出れば OK。"down" があれば values の enabled 設定を疑う
+```

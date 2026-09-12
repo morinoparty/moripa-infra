@@ -31,6 +31,7 @@ wg_extra_peers:
   # name は <name>.wg.morino.party の DNS 名にもなる(ハイフンのみ、アンダースコア不可)
   - { name: nikomaru-minipc-01, public_key: "SkO8raeJ3sYVa3zz3N8zlacUpQFPUrPd08fLWD1geVk=", allowed_ips: 10.100.0.100/32 }  # Linux 管理機(Ansible 実行元)
   - { name: nikomaru-gamepc-01, public_key: "nJfl9ocIyh6yC3PLkShe7Nyd+9bAe/pPWcnZ1MG7ygU=", allowed_ips: 10.100.0.101/32 }  # Windows 機(WireGuard for Windows)
+  - { name: nikomaru-note-01, public_key: "2wwD3HhXGDmfaeXqMttKCNYHjvCJxVMq9SezqMn41ic=", allowed_ips: 10.100.0.102/32 }  # ノート PC(管理用)
 
 # Pod / Service CIDR は両拠点で同一値を使う。クラスタ同士は接続しないため
 # 重複しても問題ない(将来 cluster mesh 等で接続するなら再IP設計が必要 →

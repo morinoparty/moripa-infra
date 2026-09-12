@@ -75,7 +75,7 @@ Secret は不要。
 | -2 | `cilium` | Cilium(Ansible の Helm リリースを引き取る) |
 | -1 | `cert-manager` | cert-manager(クラスタ内部向け。公開 TLS は Linode の Caddy) |
 | 0 | `longhorn` | Longhorn(既定 StorageClass。site1 のみ) |
-| 1 | `monitoring` | 監視 |
+| 1 | `monitoring` | kube-prometheus-stack(Prometheus / node-exporter / Grafana) |
 | 2 | `apps` | 第2の app-of-apps(`kubernetes/sites/<site>/apps/`) |
 
 ## Cilium 引き取りの diff ゼロ確認

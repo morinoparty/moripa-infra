@@ -32,3 +32,7 @@ longhorn_version: "1.12.1"
 
 # Headlamp(kubernetes-sigs.github.io/headlamp の chart。bootstrap/applications/headlamp.yaml と一致)
 headlamp_version: "0.45.0"
+
+# kube-prometheus-stack(prometheus-community.github.io/helm-charts の chart。
+# bootstrap/applications/monitoring.yaml と一致)
+kube_prometheus_stack_version: "90.1.1"

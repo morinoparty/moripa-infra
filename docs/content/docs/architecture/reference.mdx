@@ -93,6 +93,7 @@ Cloudflare で `gateway_public_ip` に向ける(DNS only)。
 |---|---|---|
 | Kubernetes | `1.35`(`v1.35.8`) | pkgs.k8s.io のマイナーリポジトリ。パッチはリポジトリ内最新を導入して apt hold |
 | Cilium | `1.19.7` | 1.19系の最新パッチ(1.20はリリース直後のため見送り) |
+| kube-prometheus-stack | `90.1.1` | site1 の監視(`/docs/admin/monitoring`) |
 | kube-vip | `v1.2.3` | ARP mode、VIP は `cluster_lan_cidr` 内 |
 | Caddy | `v2.11.4` + caddy-dns/cloudflare `v0.2.4` | 公式ビルド API から取得し apt 版を dpkg-divert で差し替え |
 | oauth2-proxy | `v7.15.4` | GitHub Releases(sha256 検証) |

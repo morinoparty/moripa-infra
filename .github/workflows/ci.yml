@@ -71,6 +71,10 @@ jobs:
           hv=$(grep -oP 'headlamp_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
           helm template headlamp headlamp --repo https://kubernetes-sigs.github.io/headlamp --version "$hv" \
             -n headlamp -f kubernetes/sites/site1/infrastructure/headlamp/values.yaml > /dev/null
+          mv=$(grep -oP 'kube_prometheus_stack_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
+          helm template monitoring kube-prometheus-stack --repo https://prometheus-community.github.io/helm-charts \
+            --version "$mv" -n monitoring --kube-version "$kv" \
+            -f kubernetes/sites/site1/infrastructure/monitoring/values.yaml > /dev/null
 
       - name: kustomize build(secrets/ksops を含む overlay は対象外)
         run: |
@@ -81,7 +85,6 @@ jobs:
                    kubernetes/sites/site1/bootstrap/applications \
                    kubernetes/sites/site1/infrastructure/storage \
                    kubernetes/sites/site1/infrastructure/headlamp \
-                   kubernetes/sites/site1/infrastructure/monitoring \
                    kubernetes/sites/site1/apps \
                    kubernetes/sites/site2/bootstrap/argocd \
                    kubernetes/sites/site2/bootstrap/applications \

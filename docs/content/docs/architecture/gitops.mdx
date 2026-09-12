@@ -28,7 +28,7 @@ kubernetes/
     │   ├── infrastructure/
     │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
     │   │   ├── storage/            # Longhorn の values + UI の Ingress
-    │   │   └── monitoring/
+    │   │   └── monitoring/         # kube-prometheus-stack の values + UI の Ingress + Grafana 管理者 Secret(sops)
     │   └── apps/               # 個別アプリの Application(当面は空)
     └── site2/              # site1 と同構造
 ```
@@ -55,7 +55,7 @@ graph LR
 | -1 | `cert-manager` | クラスタ内部向け証明書の仕組み(公開サービスの TLS は Linode 上の Caddy が終端するため必須ではない) |
 | 0 | `longhorn` | 分散ブロックストレージ(既定 StorageClass)。chart は charts.longhorn.io、values と Ingress は git(multi-source)。`prune: false` |
 | 1 | `headlamp` | k8s の Web UI(`headlamp.site1.private.dev.morino.party`、oauth2-proxy の後ろ。Headlamp 自身のログインは無効) |
-| 1 | `monitoring` | 監視 |
+| 1 | `monitoring` | kube-prometheus-stack(Prometheus / node-exporter / Grafana。UI は private ホスト、`/docs/admin/monitoring`) |
 | 2 | `apps` | 個別アプリ(当面は空。Minecraft は後回し) |
 
 `root`・`cilium`・`longhorn` の Application は `prune: false`(誤削除防止 / CNI 破壊防止 / ボリューム消失防止)。

@@ -19,11 +19,12 @@ kube_vip_interface: "{{ cluster_lan_interface }}"
 # 管理機には sshpass が必要(docs/content/docs/admin/ansible.mdx)
 
 # ノードのデータ領域(roles/longhorn_prereq)。Ubuntu の既定インストールはルート LV が
-# 100GB で残りの VG が未使用なので、残り全部で LV を切って /data にマウントする。
-# Longhorn は /data/longhorn、hostPath / local-path を使うときも /data 配下に置く
-# (ルートと分離されるのでボリュームが肥大化しても OS が詰まらない)
-data_vg: ubuntu-vg
-data_lv: data
+# 100GB で残りの VG が未使用なので、ルート LV を VG 全体まで広げる(データ用 LV は作らない。
+# 当初は別 LV にしていたが 2026-09-12 に統合)。Longhorn は /data/longhorn、hostPath /
+# local-path を使うときも /data 配下に置く。OS 側の余裕は Longhorn の disk の
+# storageReserved(30GiB)で確保する
+root_vg: ubuntu-vg
+root_lv: ubuntu-lv
 data_mount: /data
 longhorn_data_path: "{{ data_mount }}/longhorn"
 

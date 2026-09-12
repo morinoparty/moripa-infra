@@ -104,7 +104,7 @@ Ansible が入れた Cilium の Helm リリースをそのまま ArgoCD が引�
 
 `longhorn` Application は charts.longhorn.io の chart と Git 上の
 `kubernetes/sites/site1/infrastructure/storage/longhorn-values.yaml`、同ディレクトリの
-Ingress を multi-source で同期する。ノード側の前提(`/data` LV、iscsid、nfs-common)は
+Ingress を multi-source で同期する。ノード側の前提(ルート LV の拡張、`/data/longhorn`、iscsid、nfs-common)は
 `make cluster` の `longhorn_prereq` ロールが済ませている。
 
 ✅ 検証:

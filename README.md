@@ -66,7 +66,7 @@ moripa-infra/
 │   │   ├── reverse_proxy/      # Linode 上の Caddy(gateway/caddy/Caddyfile を git から取り込む)
 │   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort)
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
-│   │   ├── longhorn_prereq/    # /data LV(VG の残り全部), iscsid, nfs-common, multipathd 停止
+│   │   ├── longhorn_prereq/    # ルート LV を VG 全体に拡張, iscsid, nfs-common, multipathd 停止
 │   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
 │   └── playbooks/              # site.yml = gateway.yml + cluster.yml
 ├── kubernetes/                 # 各拠点の ArgoCD が watch する領域
@@ -122,7 +122,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | 拠点構成 | site1 3台 / site2 2台、拠点ごとに独立クラスタ | site1 は 3台とも control-plane(stacked etcd 3メンバー、全ノード schedulable、kube-vip の VIP でフェイルオーバー)。site2 は node1 = control-plane、node2 = worker(HA ではない) |
 | ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が第 2 サブネットの固定アドレス(`lan_address`)を LAN NIC に追加する |
 | クラスタ用サブネット | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | `cluster_lan_cidr`。node<N> は `.1N`、VIP `.10`。実際の LAN と被ったら変更 |
-| ストレージ | Longhorn(site1、3レプリカ、既定 StorageClass) | ノードの残りディスクを `/data` LV にして `/data/longhorn` を使う。hostPath / local-path も `/data` 配下 |
+| ストレージ | Longhorn(site1、3レプリカ、既定 StorageClass) | ルート LV を VG 全体に広げ、`/data/longhorn` をディスクにする(OS 側の余裕は Longhorn の storageReserved 30GiB) |
 | ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |

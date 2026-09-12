@@ -78,7 +78,7 @@ NOPASSWD を配った後はパスワードは使われないが、ファイル�
 flowchart TD
     A["共通: base + wireguard(全ノード, spoke化)"] --> A2["cluster_lan: 第 2 サブネットのアドレスを LAN NIC に追加(全ノード)"]
     A2 --> B["k8s_prereq: containerd / kubeadm 導入(全ノード)"]
-    B --> B2["longhorn_prereq: /data LV / iscsid / nfs-common(全ノード)"]
+    B --> B2["longhorn_prereq: ルート LV を VG 全体に拡張 / iscsid / nfs-common(全ノード)"]
     B2 --> C["site1 control-plane 構築(node1: kubeadm init → node2, node3 が join、serial 1)"]
     C --> D["site2 control-plane 構築(node1: kubeadm init)"]
     D --> E["worker join(site2 の node2)"]
@@ -155,3 +155,27 @@ control-plane が 1台のため、node1 の全損に備えて etcd スナップ�
   拠点で問題が出ても、もう片方には影響しない(設計判断の詳細は
   `/docs/architecture/overview`)。
 </Callout>
+
+## 旧「/data LV」からの統合手順(参考)
+
+2026-09-12 までは VG の残りを `data` LV にして `/data` にマウントしていた。現在はルート LV を
+VG 全体に広げ、`/data/longhorn` はルート FS 上のディレクトリ。`longhorn_prereq` ロールは
+`/dev/ubuntu-vg/data` が残っていると止まるので、その場合はノードごとに次を行う
+(3 レプリカなので 1 台ずつなら無停止):
+
+```sh
+# 1) Longhorn: そのノードのスケジュールを止め、ノード上のレプリカを消す(他 2 台に残る)
+kubectl -n longhorn-system patch nodes.longhorn.io site1-nodeN --type=merge -p '{"spec":{"allowScheduling":false}}'
+kubectl -n longhorn-system get replicas.longhorn.io -o json \
+  | jq -r '.items[] | select(.spec.nodeID=="site1-nodeN") | .metadata.name' \
+  | xargs -r kubectl -n longhorn-system delete replicas.longhorn.io
+# 2) ノードで LV を統合(longhorn-disk.cfg は必ず残す。消すと別ディスク扱いになる)
+sudo cp -a /data/longhorn /root/longhorn-keep && sudo umount /data
+sudo lvremove -y ubuntu-vg/data && sudo lvextend -l +100%FREE ubuntu-vg/ubuntu-lv && sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+sudo sed -i '\|/dev/ubuntu-vg/data /data|d' /etc/fstab
+sudo rm -rf /data && sudo mkdir /data && sudo mv /root/longhorn-keep /data/longhorn
+# 3) Longhorn: スケジュールを戻し、OS 用に 30GiB を予約。レプリカは自動で再構築される
+kubectl -n longhorn-system patch nodes.longhorn.io site1-nodeN --type=merge \
+  -p '{"spec":{"allowScheduling":true,"disks":{"<disk名>":{"path":"/data/longhorn","allowScheduling":true,"storageReserved":32212254720}}}}'
+kubectl -n longhorn-system get volumes.longhorn.io   # robustness が healthy に戻ってから次のノードへ
+```

@@ -17,7 +17,7 @@ description: CIDR・VIP・Caddy / HAProxy の公開ルート・各コンポー�
 |---|---|---|
 | ノードの OS | Ubuntu 26.04.1 LTS server | 全ノード共通 |
 | 拠点構成 | site1 3台 / site2 2台、拠点ごとに独立クラスタ | site1 は 3台とも control-plane(etcd 3メンバー、schedulable、VIP でフェイルオーバー)。site2 は node1 = control-plane、node2 = worker(HA ではない) |
-| ストレージ | Longhorn `1.12.1`(site1) | 既定 StorageClass `longhorn`、3レプリカ。ディスクは各ノードの `/data/longhorn`(ルートとは別 LV)。UI は `longhorn.site1.private.dev.morino.party` |
+| ストレージ | Longhorn `1.12.1`(site1) | 既定 StorageClass `longhorn`、3レプリカ。ディスクは各ノードの `/data/longhorn`(ルート LV を VG 全体に広げた上のディレクトリ。OS 側の余裕は disk の storageReserved 30GiB)。UI は `longhorn.site1.private.dev.morino.party` |
 | ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が `cluster_lan_cidr` の固定アドレスを LAN NIC に追加する |
 | クラスタ用サブネット(`cluster_lan_cidr`) | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | `node<N>` は `.1N`(inventory の `lan_address`)、VIP `.10`。kubelet node-ip / kubeadm / Cilium VXLAN はこれ。実際の LAN と被ったら変更 |
 | LAN NIC(`lan_interface`) | site1 `enp12s0` | 3台とも同型。`enp11s0` は未配線。site2 は未指定(default route から自動検出) |

@@ -1,57 +1,39 @@
 # Longhorn の前提をノードに入れる(docs: https://longhorn.io/docs/1.12.1/deploy/install/#installation-requirements)
-#   - データ用 LV(VG の空き全部)を data_mount にマウント。Longhorn の disk は longhorn_data_path
+#   - ルート LV を VG の空き全部まで広げる(Ubuntu のインストーラは 100GB で止める)。
+#     Longhorn のディスクはルート FS 上の longhorn_data_path(データ用 LV は作らない。
+#     2026-09-12 に統合済み。OS 側の余裕は Longhorn の storageReserved で確保する)
 #   - open-iscsi(iscsid を起動)、iscsi_tcp モジュール、nfs-common(RWX 用)
 #   - multipathd は Longhorn のデバイスを掴んで壊すので止める(公式 KB)
-# 空きが無い VG や LV 作成済みのノードでは LV 作成をスキップする(冪等)
 
-- name: LVM の VG を確認
-  ansible.builtin.command: vgs --noheadings --units g --nosuffix -o vg_free {{ data_vg }}
+- name: LVM の VG の空きを確認
+  ansible.builtin.command: vgs --noheadings --units g --nosuffix -o vg_free {{ root_vg }}
   register: longhorn_prereq_vgfree
   changed_when: false
   failed_when: false
   become: true
 
-- name: 既存の LV を確認
+- name: 旧データ用 LV が残っていないことを確認(残っていれば docs/admin/ansible の手順で手で統合する)
   ansible.builtin.stat:
-    path: "/dev/{{ data_vg }}/{{ data_lv }}"
-  register: longhorn_prereq_lv
+    path: "/dev/{{ root_vg }}/data"
+  register: longhorn_prereq_old_lv
   become: true
 
-- name: データ用 LV を VG の空き全部で作成
+- name: 旧データ用 LV があれば止める
+  ansible.builtin.fail:
+    msg: "/dev/{{ root_vg }}/data が残っている。docs/admin/ansible の手順で root LV に統合してから再実行する"
+  when: longhorn_prereq_old_lv.stat.exists
+
+- name: ルート LV を VG の空き全部まで広げる(ファイルシステムも拡張)
   community.general.lvol:
-    vg: "{{ data_vg }}"
-    lv: "{{ data_lv }}"
-    size: 100%FREE
+    vg: "{{ root_vg }}"
+    lv: "{{ root_lv }}"
+    size: +100%FREE
+    resizefs: true
     shrink: false
   become: true
   when:
     - longhorn_prereq_vgfree.rc == 0
-    - not longhorn_prereq_lv.stat.exists
     - (longhorn_prereq_vgfree.stdout | trim | float) > 1
-
-- name: データ用 LV の存在を再確認
-  ansible.builtin.stat:
-    path: "/dev/{{ data_vg }}/{{ data_lv }}"
-  register: longhorn_prereq_lv
-  become: true
-
-- name: データ用 LV を ext4 でフォーマット(未フォーマット時のみ)
-  community.general.filesystem:
-    fstype: ext4
-    dev: "/dev/{{ data_vg }}/{{ data_lv }}"
-    opts: -L data
-  become: true
-  when: longhorn_prereq_lv.stat.exists
-
-- name: データ用 LV をマウント(fstab 登録)
-  ansible.posix.mount:
-    path: "{{ data_mount }}"
-    src: "/dev/{{ data_vg }}/{{ data_lv }}"
-    fstype: ext4
-    opts: defaults,noatime
-    state: mounted
-  become: true
-  when: longhorn_prereq_lv.stat.exists
 
 - name: Longhorn のディスクディレクトリ
   ansible.builtin.file:

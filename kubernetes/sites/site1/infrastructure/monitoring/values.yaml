@@ -107,6 +107,11 @@ grafana:
     passwordKey: admin-password
   ingress:
     enabled: false
+  # Alertmanager は無効なので、そのデータソースは作らない(dead なデータソースを残さない)
+  sidecar:
+    datasources:
+      alertmanager:
+        enabled: false
   persistence:
     enabled: true
     type: pvc

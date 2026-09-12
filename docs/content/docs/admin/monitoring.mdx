@@ -61,7 +61,10 @@ Prometheus は **pull 型**で、監視対象(node-exporter 等)に Prometheus �
 
 ```sh
 kubectl -n monitoring get pods                      # node-exporter 3/3、prometheus / grafana Running
-kubectl -n monitoring exec sts/prometheus-monitoring-kube-prometheus-prometheus -c prometheus -- \
-  wget -qO- http://127.0.0.1:9090/api/v1/targets | grep -o '"health":"[a-z]*"' | sort | uniq -c
+# Prometheus / Grafana のイメージには curl / wget が無いので、ハブから Envoy 経由で叩く
+ssh moripa@10.100.0.1 'curl -s -H "Host: prometheus.site1.private.dev.morino.party" http://10.100.0.12/api/v1/targets' \
+  | grep -o '"health":"[a-z]*"' | sort | uniq -c
 # "up" だけが出れば OK。"down" があれば values の enabled 設定を疑う
+# Grafana の API は auth.proxy のヘッダを付ければ叩ける(前段を通らない経路なので Envoy 直)
+ssh moripa@10.100.0.1 'curl -s -H "Host: grafana.site1.private.dev.morino.party" -H "X-Auth-Request-User: nikomaru" http://10.100.0.12/api/datasources'
 ```

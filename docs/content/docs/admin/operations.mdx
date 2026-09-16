@@ -34,6 +34,11 @@ HTTP/HTTPS の公開は Linode 上の Caddy が担う。`<app>.site<N>.dev.morin
 `<app>.site<N>.private.dev.morino.party` の規約に従う名前なら Caddy 側の変更は
 不要で、対象拠点に Ingress(`ingressClassName: cilium`)を置くだけでよい(`/docs/architecture/multi-site`)。
 
+公開 repo に載せたくないハブ固有のサイト定義は、ハブの `/etc/caddy/local.d/*.caddy` に直接置く
+(git の Caddyfile が `import local.d/*.caddy` している。caddy-gitops は Caddyfile と `www/` しか
+上書きせず、Ansible もディレクトリを作るだけ)。置いたら `caddy validate --config /etc/caddy/Caddyfile
+--adapter caddyfile --envfile /etc/caddy/env` を通してから `systemctl reload caddy`。
+
 規約外の名前を足すときは `gateway/caddy/Caddyfile` を編集して `main` に push する。
 ハブの `caddy-gitops.timer` が 3 分ごとに取り込み、`caddy validate` を通してから
 reload する(検証に失敗したら現行設定のまま。`journalctl -u caddy-gitops` に理由が出る)。

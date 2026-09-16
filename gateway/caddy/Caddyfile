@@ -4,20 +4,23 @@
 #
 # 使える snippet(generated.caddy、inventory から生成):
 #   cf_tls          Cloudflare DNS-01 のワイルドカード証明書
-#   to_site1 / to_site2   その拠点の全ノード :80(Cilium Gateway)へ転送
+#   to_site1 / to_site2   その拠点の全ノード :80(Cilium の ingress controller)へ転送
 #   auth_required   oauth2-proxy(GitHub org morinoparty / MineAuth role staff)を要求
 #   auth_portal     auth.dev.morino.party(ログイン選択画面 + oauth2-proxy のコールバック)
 #
 # 命名: <app>.site<N>.dev.morino.party は公開、<app>.site<N>.private.dev.morino.party は
 # 認証付き。ワイルドカード証明書は 1 ラベルしか包まないので階層ごとにブロックを分ける。
 # ホスト名を足すときは DNS(Cloudflare、DNS only)も gateway_public_ip に向けること。
-# 対象拠点側には同じ hostnames を持つ HTTPRoute を kubernetes/sites/<site>/apps/ に置く。
+# 対象拠点側には同じ host を持つ Ingress(ingressClassName: cilium)を kubernetes/sites/<site>/ に置く。
 {
 	email yahiro@morino.party
 	# admin API(localhost:2019)は reload に必要。off にしないこと
 }
 
 import generated.caddy
+# ハブ固有で公開 repo に載せないサイト定義(/etc/caddy/local.d/*.caddy)。Ansible も
+# caddy-gitops も触らない(gitops は Caddyfile と www/ だけを上書きする)。無ければ何も読まない
+import local.d/*.caddy
 
 # ---- 公開(認証なし)-----------------------------------------------------------
 *.site1.dev.morino.party {

@@ -8,6 +8,7 @@
 #   generated.caddy  この role が inventory から生成する snippet(upstream / tls / auth)
 #   env              Cloudflare API トークン(sops → EnvironmentFile)
 #   www/             git の gateway/caddy/www(ログイン選択画面)。caddy-gitops が同期
+#   local.d/*.caddy  ハブ固有で公開 repo に載せないサイト定義。Ansible も gitops も中身は触らない
 # apt の caddy には DNS モジュールが無いので、公式ビルド API から caddy-dns/cloudflare
 # 入りのバイナリを取り、dpkg-divert + update-alternatives で差し替える
 # (https://caddyserver.com/docs/build#package-support-files-for-custom-builds)
@@ -35,6 +36,15 @@
     state: present
     update_cache: "{{ reverse_proxy_repo.changed }}"
     cache_valid_time: 3600
+  become: true
+
+- name: ハブ固有で公開 repo に載せないサイト定義の置き場(Caddyfile が local.d/*.caddy を import する)
+  ansible.builtin.file:
+    path: /etc/caddy/local.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
   become: true
 
 - name: gitops 用に git / rsync を導入

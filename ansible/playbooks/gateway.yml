@@ -9,3 +9,4 @@
     - auth_proxy
     - reverse_proxy
     - tcp_proxy
+    - node_exporter

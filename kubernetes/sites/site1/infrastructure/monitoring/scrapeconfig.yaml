@@ -1,0 +1,22 @@
+# クラスタ外ノードの node exporter(wg 経由の static target)。
+# scrapeConfigSelectorNilUsesHelmValues: false なのでラベル無しで拾われる。
+# jobName を node-exporter に合わせることで、kube-prometheus-stack 同梱の
+# Nodes ダッシュボード(instance 変数が job="node-exporter" を見る)にそのまま出る。
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: external-node-exporter
+  namespace: monitoring
+  annotations:
+    # 初回 bootstrap で ScrapeConfig CRD より先に dry-run されても失敗にしない
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  jobName: node-exporter
+  scrapeInterval: 30s
+  staticConfigs:
+    - targets: ["10.100.0.1:9100"]
+      labels:
+        instance: linode-gw
+    - targets: ["10.100.0.103:9100"]  # wg_extra_peers の moripa-tutu(Ansible 管理外)
+      labels:
+        instance: moripa-tutu

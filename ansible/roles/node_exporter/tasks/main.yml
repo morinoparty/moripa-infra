@@ -1,0 +1,38 @@
+- name: node exporter を導入
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+# Ubuntu パッケージのユニットは /etc/default/prometheus-node-exporter の ARGS を読む
+- name: listen アドレスを設定
+  ansible.builtin.copy:
+    dest: /etc/default/prometheus-node-exporter
+    content: |
+      # Ansible managed(手で編集しない)
+      ARGS="--web.listen-address={{ node_exporter_listen }}"
+    mode: "0644"
+  become: true
+  notify: Restart node exporter
+
+- name: node exporter を有効化・起動
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  become: true
+
+# wg が listen アドレスより後に上がった直後などに備え、反映を確実にする
+- name: handler を反映
+  ansible.builtin.meta: flush_handlers
+
+- name: メトリクスが取得できることを確認
+  ansible.builtin.uri:
+    url: http://{{ node_exporter_listen }}/metrics
+    return_content: false
+  register: node_exporter_check
+  retries: 3
+  delay: 2
+  until: node_exporter_check.status == 200

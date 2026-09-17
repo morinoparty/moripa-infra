@@ -17,6 +17,8 @@ table inet filter {
     udp dport {{ wg_port }} accept
     # wg 内の DNS(dnsmasq)。wg0 からのみ
     iifname "{{ wg_interface }}" meta l4proto { tcp, udp } th dport 53 accept
+    # node exporter(site1 の Prometheus がスクレイプする)。wg0 からのみ
+    iifname "{{ wg_interface }}" tcp dport 9100 accept
     # Caddy(HTTP/HTTPS リバースプロキシ)の公開ポート。ACME HTTP-01 にも 80 が必要
     tcp dport { {{ proxy_public_ports | join(', ') }} } accept
 {% for r in tcp_routes %}

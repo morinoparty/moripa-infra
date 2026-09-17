@@ -10,6 +10,21 @@
     cache_valid_time: 3600
   become: true
 
+# ubuntu-fan(dnsmasq の推奨依存で入る)の bind-interfaces は wg.conf の
+# bind-dynamic と排他で、restart 時に dnsmasq が起動不能になる。
+# fan networking は未使用なので設定を空に上書きして無効化する
+# (削除だと apt が conffile を再配置しうる。変更済み conffile は保持される)
+- name: ubuntu-fan の dnsmasq 設定を無効化
+  ansible.builtin.copy:
+    dest: /etc/dnsmasq.d/ubuntu-fan
+    content: |
+      # Ansible managed(手で編集しない)
+      # fan networking は未使用。bind-interfaces が wg.conf の bind-dynamic と
+      # 衝突して dnsmasq が起動不能になるため無効化している
+    mode: "0644"
+  become: true
+  notify: Restart dnsmasq
+
 - name: dnsmasq の wg 用設定を配布
   ansible.builtin.template:
     src: wg.conf.j2

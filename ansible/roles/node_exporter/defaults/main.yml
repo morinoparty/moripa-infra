@@ -1,0 +1,3 @@
+# listen は wg アドレスに限定(公開 NIC に晒さない)。
+# 将来 site2 ノード等に使うときもこのデフォルトのままでよい
+node_exporter_listen: "{{ wg_address }}:9100"

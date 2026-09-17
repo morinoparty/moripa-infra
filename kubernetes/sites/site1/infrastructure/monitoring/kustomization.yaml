@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: monitoring
 resources:
   - ingress.yaml
+  - scrapeconfig.yaml
 # Grafana の管理者パスワード(sops + ksops。ローカルの kubectl kustomize ではビルドできないので
 # CI / make lint-kustomize の対象外)
 generators:

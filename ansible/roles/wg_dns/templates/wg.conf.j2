@@ -1,5 +1,5 @@
 # {{ ansible_managed }}
-# wg 内の名前解決。生成元: inventory(wg_address)と network.yml の wg_extra_peers / gateway_fronted_names
+# wg 内の名前解決。生成元: inventory(wg_address)と network.yml の wg_extra_peers
 
 # wg0 からのみ応答(eth0 には出さない)。bind-dynamic で wg0 が後から現れても追従する
 bind-dynamic
@@ -29,9 +29,3 @@ host-record={{ h }}.{{ wg_dns_domain }},{{ hostvars[h].wg_address }}
 host-record={{ peer.name }}.{{ wg_dns_domain }},{{ peer.allowed_ips.split('/')[0] }}
 {% endfor %}
 
-# --- ハブを入口にする公開名(外では Cloudflare がハブの公開 IP を返す)---
-# wg 内ではハブの wg アドレスを返し、同じ Caddy / HAProxy に着かせる。
-# ゾーン(gw.morino.party 等)は local= にしない: それ以外の名前(gw.morino.party 自体)は上流へ
-{% for name in gateway_fronted_names | default([]) %}
-host-record={{ name }},{{ wg_hub_address }}
-{% endfor %}

@@ -13,15 +13,14 @@ Pelican Wings(ゲームサーバーのデーモン)を **site1-node2** で動か
 | `ansible/roles/wings_host`(inventory の `wings_nodes`) | docker.io、`/etc/docker/daemon.json`、uid/gid `2988` の `pelican` ユーザー、`/etc/pelican` `/var/lib/pelican` `/var/log/pelican` `/tmp/pelican` |
 | `ansible/group_vars/wings_nodes/main.yml` | uid/gid、API / SFTP のポート、ingress フィルタに足すポート |
 | `kubernetes/sites/site1/apps/wings/` | Deployment(node2 固定、hostNetwork、イメージはダイジェスト固定)、`config.yml` の Secret(sops) |
-| `ansible/group_vars/all/network.yml` | `tcp_routes`(SFTP・ゲーム port)、`gateway_fronted_names`、`proxy_public_ports` の `8443` |
+| `ansible/group_vars/all/network.yml` | `tcp_routes`(SFTP・ゲーム port)、`proxy_public_ports` の `8443` |
 | `gateway/caddy/Caddyfile` | `site1-node2.gw.morino.party:8443` → `10.100.0.12:8080` |
 
 ## 経路と DNS
 
 ```mermaid
 flowchart LR
-    Ext["外部(ブラウザ / プレイヤー)"] -- "site1-node2.gw.morino.party<br/>(Cloudflare: ハブの公開 IP)" --> GW
-    WG["wg peer(管理機など)"] -- "site1-node2.gw.morino.party<br/>(ハブの dnsmasq: 10.100.0.1)" --> GW
+    Ext["ブラウザ / プレイヤー / パネル(wg 内も同じ)"] -- "site1-node2.gw.morino.party<br/>(Cloudflare: ハブの公開 IP)" --> GW
     subgraph GW["linode-gw"]
       Caddy[":8443 Caddy(TLS 終端)"]
       HAP[":2022 / :25565 HAProxy(L4)"]
@@ -31,16 +30,14 @@ flowchart LR
     HAP -- "wg0 → :25565" --> D["node2 の dockerd<br/>(ゲームサーバー)"]
 ```
 
-名前は **`site1-node2.gw.morino.party` の 1 つだけ**で、外からも wg 内からも同じ名前・同じポートで
-使える(`network.yml` の `gateway_fronted_names`)。
+名前は **`site1-node2.gw.morino.party` の 1 つだけ**で、DNS も Cloudflare の A / AAAA(ハブの公開 IP、
+DNS only)の 1 か所だけ。wg 内の dnsmasq も上書きせず上流へ転送するので、外からも wg 内からも
+同じ答え・同じポートになる。
 
-- 外: Cloudflare の A / AAAA(DNS only)がハブの公開 IP を返す
-- wg 内: ハブの dnsmasq が `10.100.0.1`(ハブの wg アドレス)を返す。wg は hub-and-spoke なので
-  wg peer から node2 への通信は元々ハブを通る。どちらから来ても同じ Caddy / HAProxy に着く
-- Linux の管理機は `~wg.morino.party` だけをハブへ向けている(`/docs/admin/keys`)ので、この名前は
-  Cloudflare で引いてハブの公開 IP へ行く。結果は同じ入口なので困らない。`~gw.morino.party` を
-  ルーティングドメインに足すのはやめる(wg の Endpoint `gw.morino.party` の親なので、再接続時に
-  トンネル内の DNS を引こうとして詰まる)
+- wg 内だけ `10.100.0.1` を返す split DNS にはしない。パネル(公開サイト)のページからブラウザが
+  プライベート IP へ fetch する形になり、Local Network Access の許可プロンプト・ブロックの対象になる
+  (コンソールの WebSocket も同じ)
+- ハブの公開 IP は wg の Endpoint なので、wg peer からもトンネルの外を通って直接届く
 
 | port | 受け口(ハブ) | 転送先 |
 |---|---|---|

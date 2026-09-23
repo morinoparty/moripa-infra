@@ -58,12 +58,10 @@ tcp_routes:
   - { name: game-25565, port: 25565, site: site1, hosts: [site1-node2] }
 #  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
 
-# ハブを入口にする公開名。Cloudflare(外)ではハブの公開 IP(A / AAAA、DNS only)、
-# wg 内ではハブの dnsmasq がハブの wg アドレス(10.100.0.1)を返す。wg は hub-and-spoke なので
-# wg peer からの通信は元々ハブを通る。どちらから引いても同じ名前・同じポートで同じ
-# Caddy / HAProxy に着く(内外で FQDN と port を揃えるための仕組み)
-gateway_fronted_names:
-  - site1-node2.gw.morino.party
+# ハブを入口にする公開名(site1-node2.gw.morino.party 等)は Cloudflare の A / AAAA(ハブの公開 IP、
+# DNS only)だけで管理し、wg 内の dnsmasq では上書きしない(上流へ転送して同じ答えを返す)。
+# wg 内でだけ 10.100.0.1 を返すと、公開サイト(パネル等)のページからブラウザが
+# プライベート IP へ fetch する形になり、Local Network Access の許可プロンプト・ブロックの対象になる
 
 # Linode 上の Caddy(リバースプロキシ)。HTTP/HTTPS はここで受けて TLS を終端し、
 # ホスト名ごとに対象拠点の全ノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。

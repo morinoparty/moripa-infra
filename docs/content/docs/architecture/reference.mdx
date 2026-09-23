@@ -60,9 +60,10 @@ forwarding でプレイヤー IP を渡す)。`terraform` の `public_tcp_ports`
 | `gw.wg.morino.party` / `linode-gw.wg.morino.party` | `10.100.0.1` |
 | `<inventory_hostname>.wg.morino.party`(例: `site1-node1`) | そのホストの `wg_address` |
 | `<wg_extra_peers[].name>.wg.morino.party`(例: `admin`) | その peer の `allowed_ips` |
-| `gateway_fronted_names`(例: `site1-node2.gw.morino.party`) | `10.100.0.1`(外では Cloudflare がハブの公開 IP を返す。内外で同じ名前・同じ port) |
 
-ゾーン外の問い合わせは `wg_dns_upstreams`(1.1.1.1 / 1.0.0.1)へ転送する。
+ゾーン外の問い合わせは `wg_dns_upstreams`(1.1.1.1 / 1.0.0.1)へ転送する。ハブを入口にする
+公開名(`site1-node2.gw.morino.party` 等)も上書きせず転送するので、wg 内でも外と同じ公開 IP が返る
+(wg 内だけプライベート IP を返すと、ブラウザの Local Network Access の対象になる)。
 クラスタ用の `10.200.x.x` は wg から届かないため登録しない。クライアント側の
 設定は `/docs/admin/keys` を参照。
 

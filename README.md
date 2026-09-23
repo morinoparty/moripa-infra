@@ -61,7 +61,7 @@ moripa-infra/
 │   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades, ノードは zsh + oh-my-zsh
 │   │   ├── wireguard/          # hub/spoke 両対応 + nftables (masquerade / 公開ポート / MSS clamp)
 │   │   ├── cluster_lan/        # クラスタ用の第 2 サブネットを LAN NIC に追加(netplan)
-│   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス、gateway_fronted_names → ハブ)
+│   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス)
 │   │   ├── auth_proxy/         # Linode 上の oauth2-proxy(GitHub org / MineAuth staff)
 │   │   ├── reverse_proxy/      # Linode 上の Caddy(gateway/caddy/Caddyfile を git から取り込む)
 │   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort / 指定ノードの port)

@@ -200,9 +200,11 @@ check(len(tcp_ports) == len(tcp_routes), "tcp_routes の port が重複してい
 for r in tcp_routes:
     check(r.get("site") in SITES, f"tcp_routes {r.get('name')} の site={r.get('site')} が {SITES} に無い")
     check(
-        ("node_port" in r) != ("hosts" in r),
-        f"tcp_routes {r.get('name')} は node_port(全ノード)か hosts(指定ホスト)のどちらか一方を持つこと",
+        sum(k in r for k in ("node_port", "hosts", "minecraft_hosts")) == 1,
+        f"tcp_routes {r.get('name')} は node_port / hosts / minecraft_hosts のどれか 1 つを持つこと",
     )
+    # minecraft_hosts は sops 暗号化の group_vars/gateway/minecraft.sops.yml を参照する
+    # Jinja 文字列なのでここでは中身を見ない(重複・包含は tcp_proxy ロールの assert が検査)
     for h in r.get("hosts") or []:
         check(
             h in hosts and hosts[h]["site"] == r.get("site"),

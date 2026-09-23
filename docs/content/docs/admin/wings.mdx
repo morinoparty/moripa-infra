@@ -27,7 +27,7 @@ flowchart LR
     end
     Caddy -- "wg0 → :8080" --> N2["site1-node2<br/>Wings Pod(hostNetwork)"]
     HAP -- "wg0 → :2022" --> N2
-    HAP -- "wg0 → :25565" --> D["node2 の dockerd<br/>(ゲームサーバー)"]
+    HAP -- "ホスト名で振り分け<br/>wg0 → :25565 / :25566 …" --> D["node2 の dockerd<br/>(ゲームサーバー)"]
 ```
 
 名前は **`site1-node2.gw.morino.party` の 1 つだけ**で、DNS も Cloudflare の A / AAAA(ハブの公開 IP、
@@ -43,7 +43,7 @@ DNS only)の 1 か所だけ。wg 内の dnsmasq も上書きせず上流へ転�
 |---|---|---|
 | `8443` | Caddy(Let's Encrypt DNS-01 で TLS 終端) | node2 `:8080`(Wings API、平文) |
 | `2022` | HAProxy(`tcp_routes` の `wings-sftp`) | node2 `:2022`(Wings の SFTP) |
-| `25565` | HAProxy(`tcp_routes` の `game-25565`) | node2 `:25565`(docker が publish したゲームサーバー) |
+| `25565` | HAProxy(`tcp_routes` の `minecraft`)。handshake の接続先ホスト名で振り分け、一致しなければ切断 | node2 の各ゲームサーバーの port(対応表は sops 暗号化の `group_vars/gateway/minecraft.sops.yml`) |
 
 node2 の `:8080` / `:2022` は ingress フィルタ(`roles/k8s_prereq`)で wg0 / lo 以外から drop する
 (拠点 LAN から直接叩けない)。ゲームサーバーの port は docker の DNAT(forward 経路)なので
@@ -73,7 +73,9 @@ node2 の `:8080` / `:2022` は ingress フィルタ(`roles/k8s_prereq`)で wg0 
 2. パネルでノードを作る。
    - FQDN: `site1-node2.gw.morino.party`、SSL を使う、プロキシの後ろ(behind proxy)
    - Wings の listen ポート `8080`、パネル / ブラウザが繋ぐポート `8443`、SFTP `2022`
-   - 割り当て(allocation): IP `0.0.0.0`、port `25565`
+   - 割り当て(allocation): IP `10.100.0.12`(wg アドレス。HAProxy からだけ届き、拠点 LAN には開かない)、
+     port は `tcp_routes` の `minecraft_hosts` に書いた port、IP エイリアスはそのホスト名
+     (`<name>.minecraft.gw.morino.party`)
 3. パネルのノードの Configuration に出る `config.yml` を sops で暗号化して
    `kubernetes/sites/site1/apps/wings/secrets.sops.yaml`(Secret `wings-config` の `stringData.config.yml`)に
    置き、push する。`api.port: 8080`、`api.ssl.enabled: false`(TLS はハブの Caddy)、
@@ -93,11 +95,33 @@ node2 の `:8080` / `:2022` は ingress フィルタ(`roles/k8s_prereq`)で wg0 
 
    パネルのノード一覧でハートビートが緑になれば完了。
 
-## ゲーム用のポートを増やす
+## Minecraft サーバーを増やす
 
-`network.yml` の `tcp_routes` に `{ name: game-25566, port: 25566, site: site1, hosts: [site1-node2] }`
-を足し、`terraform/envs/prod/main.tf` の `public_tcp_ports` にも足す(`make check-consistency` が突合)。
-`make gateway` と `make tf-apply` のあと、パネルで allocation を追加する。
+外に開けるのは `25565` だけで、接続先ホスト名で振り分ける。DNS は Cloudflare の
+`*.minecraft.gw.morino.party`(ハブの公開 IP、DNS only)なので、名前ごとの DNS 作業は要らない。
+
+ホスト名 → サーバーの対応表は、どのサーバーがあるかを公開 repo に出さないため
+sops で暗号化した `ansible/group_vars/gateway/minecraft.sops.yml` に置く(`network.yml` の
+`tcp_routes` の `minecraft` はそれを参照するだけ。形式は同じ場所の `.example`)。
+
+1. 対応表に行を足す(node2 側の port は空いている番号。host は他の host を部分文字列として
+   含まないこと。`tcp_proxy` ロールの assert が検査する):
+
+   ```bash
+   sops ansible/group_vars/gateway/minecraft.sops.yml
+   ```
+
+   ```yaml
+   minecraft_hosts_site1:
+     - { host: <name>.minecraft.gw.morino.party, server: site1-node2, port: 25565 }
+     - { host: <name2>.minecraft.gw.morino.party, server: site1-node2, port: 25566 }
+   ```
+
+2. `make gateway`(Firewall・Terraform の変更は不要)
+3. パネルで allocation `10.100.0.12:<port>`(エイリアスはそのホスト名)を作り、サーバーに割り当てる
+
+Minecraft 以外の L4 サービスは従来どおり `tcp_routes` に `hosts: [site1-node2]` の行を足し、
+`terraform/envs/prod/main.tf` の `public_tcp_ports` にも足す(`make check-consistency` が突合)。
 
 ## Wings の更新
 

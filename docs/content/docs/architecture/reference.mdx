@@ -33,16 +33,21 @@ description: CIDR・VIP・Caddy / HAProxy の公開ルート・各コンポー�
 
 ## HAProxy の TCP ルート(`ansible/group_vars/all/network.yml` の `tcp_routes`)
 
-行の形式は 2 通り:
+行の形式は 3 通り:
 
 - `{ name, port, site, node_port, allowed_sources }`: port を `site` の全ノードの NodePort へ転送する
 - `{ name, port, site, hosts, target_port, allowed_sources }`: 指定ホストだけの `target_port`
   (省略時は同じ port)へ転送する。Pod ではなくホストの docker が port を持つもの用
+- `{ name, port, site, minecraft_hosts: [{ host, server, port }] }`: 1 つの port で受け、Minecraft の
+  handshake に入っている接続先ホスト名(HTTPS の SNI 相当)で `server` の `port` へ振り分ける。
+  どれにも一致しなければ切断。HAProxy は受信データを hex にしてホスト名の hex と部分一致させる
+  (バイナリのままだと先頭付近の `0x00` で文字列が切れて一致しない)。ある host が別の host を
+  含む組み合わせは `make check-consistency` が弾く
 
 | name | port | 転送先 |
 |---|---|---|
 | `wings-sftp` | `2022` | site1-node2 `:2022`(`/docs/admin/wings`) |
-| `game-25565` | `25565` | site1-node2 `:25565` |
+| `minecraft` | `25565` | `<name>.minecraft.gw.morino.party` をホスト名で振り分け(対応表は sops 暗号化の `group_vars/gateway/minecraft.sops.yml`) |
 
 L4 なのでクライアント実IPは届かない(Minecraft なら Velocity の modern
 forwarding でプレイヤー IP を渡す)。`terraform` の `public_tcp_ports` =

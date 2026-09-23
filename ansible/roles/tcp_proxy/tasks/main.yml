@@ -10,13 +10,37 @@
     that:
       - item.site in groups
       - groups[item.site] | intersect(groups['k8s_cluster']) | length > 0
-      # 転送先はどちらか一方: node_port(全ノード)か hosts(指定ホスト、その拠点のノードに限る)
-      - (item.node_port is defined) != (item.hosts is defined)
+      # 転送先はどれか 1 つ: node_port(全ノード)/ hosts(指定ホスト)/ minecraft_hosts(ホスト名で振り分け)
+      - ([item.node_port is defined, item.hosts is defined, item.minecraft_hosts is defined] | select | list | length) == 1
       - item.hosts is not defined or (item.hosts | length > 0 and item.hosts | difference(groups[item.site] | intersect(groups['k8s_cluster'])) | length == 0)
+      - >-
+        item.minecraft_hosts is not defined or (item.minecraft_hosts | length > 0 and
+        item.minecraft_hosts | map(attribute='server') | difference(groups[item.site] | intersect(groups['k8s_cluster'])) | length == 0)
     fail_msg: >-
       tcp_routes[{{ item.name }}]: site={{ item.site }} が inventory のグループに無いか、
-      node_port と hosts の指定が不正(どちらか一方、hosts は site のクラスタノード)
+      転送先の指定が不正(node_port / hosts / minecraft_hosts のどれか 1 つ。hosts と
+      minecraft_hosts の server は site のクラスタノード)
   loop: "{{ tcp_routes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# HAProxy は handshake をホスト名で部分一致させるので、ある host が別の host を含むと
+# 先に書いた方に吸われる(対応表は sops 暗号化なので check-consistency では見られない)
+- name: minecraft_hosts の host が重複せず、互いを含まないことを確認
+  ansible.builtin.assert:
+    that:
+      - names | length == names | unique | length
+      - conflicts == ''
+    fail_msg: "tcp_routes[{{ item.name }}].minecraft_hosts の host が重複しているか、別の host を含んでいる: {{ conflicts }}"
+  vars:
+    names: "{{ item.minecraft_hosts | map(attribute='host') | list }}"
+    conflicts: >-
+      {%- set out = [] -%}
+      {%- for x in names -%}{%- for y in names -%}
+      {%- if x != y and x in y -%}{%- set _ = out.append(x ~ ' in ' ~ y) -%}{%- endif -%}
+      {%- endfor -%}{%- endfor -%}
+      {{- out | join(', ') -}}
+  loop: "{{ tcp_routes | selectattr('minecraft_hosts', 'defined') | list }}"
   loop_control:
     label: "{{ item.name }}"
 

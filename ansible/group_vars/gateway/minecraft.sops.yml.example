@@ -1,0 +1,10 @@
+# Minecraft のホスト名 → サーバーの対応表(network.yml の tcp_routes の minecraft が参照)。
+# どのサーバーがあるかを公開 repo に出さないため sops で暗号化している。編集は
+#   sops ansible/group_vars/gateway/minecraft.sops.yml
+# 反映は make gateway(HAProxy だけなら tcp_proxy ロール)。DNS は *.minecraft.gw.morino.party の
+# ワイルドカードなので名前ごとの作業は不要。パネルで allocation <server の wg アドレス>:<port> を作る。
+# host は他の host を部分文字列として含まないこと(HAProxy は部分一致で判定する。tcp_proxy が検査)
+minecraft_hosts_site1:
+  - host: example.minecraft.gw.morino.party
+    server: site1-node2
+    port: 25565

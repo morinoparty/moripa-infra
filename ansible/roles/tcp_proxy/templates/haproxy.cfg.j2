@@ -2,6 +2,7 @@
 # 生成元: ansible/group_vars/all/network.yml の tcp_routes
 # 各 port を対象拠点の全ノードの NodePort(node_port)か、指定ホスト(hosts)の
 # target_port(省略時は同じ port)へ L4 で転送する(実IPは届かない)。
+# minecraft_hosts を持つ route は、handshake の接続先ホスト名でバックエンドを選ぶ。
 # 送信元の制限(allowed_sources)は nftables 側で行う
 
 global
@@ -25,6 +26,33 @@ defaults
     timeout server 1h
 
 {% for r in tcp_routes %}
+{% if r.minecraft_hosts is defined %}
+# Minecraft の handshake(平文、最初のパケット)には接続先ホスト名がそのまま入るので、
+# 受信済みのデータ全体(req.payload(0,0))をホスト名で部分一致させる(HTTPS の SNI 相当)。
+# バイナリのまま -m sub で比べると、先頭付近の 0x00(パケット ID)で文字列が切れて一致しない
+# ため、hex に変換してホスト名の hex と比べる。Forge の "\0FML..." や末尾の "." が付いても通る。
+# 先頭 N バイトに絞ると長いホスト名が途中で切れるので、長さは指定しない
+frontend {{ r.name }}
+    # v4 と v6(Cloud Firewall は両方通す)
+    bind :::{{ r.port }} v4v6
+    tcp-request inspect-delay 3s
+    # handshake が届いたら判定する(届かないまま 3 秒で下の reject)
+    tcp-request content accept if { req.len gt 0 }
+{% for m in r.minecraft_hosts %}
+    # {{ m.host }}
+    use_backend {{ r.name }}_{{ m.host | replace('.', '_') }} if { req.payload(0,0),hex -m sub {{ m.host.encode('utf-8').hex() | upper }} }
+{% endfor %}
+    default_backend {{ r.name }}_reject
+
+{% for m in r.minecraft_hosts %}
+backend {{ r.name }}_{{ m.host | replace('.', '_') }}
+    server {{ m.server }} {{ hostvars[m.server].wg_address }}:{{ m.port }} check inter 5s fall 2 rise 2
+
+{% endfor %}
+backend {{ r.name }}_reject
+    tcp-request content reject
+
+{% else %}
 {% if r.hosts is defined %}
 {% set targets = r.hosts %}
 {% set target_port = r.target_port | default(r.port) %}
@@ -40,4 +68,5 @@ listen {{ r.name }}
     server {{ h }} {{ hostvars[h].wg_address }}:{{ target_port }} check inter 5s fall 2 rise 2
 {% endfor %}
 
+{% endif %}
 {% endfor %}

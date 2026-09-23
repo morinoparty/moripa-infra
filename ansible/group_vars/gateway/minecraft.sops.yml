@@ -1,0 +1,28 @@
+minecraft_hosts_site1:
+    - host: ENC[AES256_GCM,data:4GtpY8jodRoxdKHCJ2bMWNGSUDlwgn0nOLZrILJFF9id,iv:ZyZObUXihc2fQXOp6/iQsoaR0cuc4Ysu8KCnWzIkZRw=,tag:JAWNHjhgy7hF98G545n3Rw==,type:str]
+      server: ENC[AES256_GCM,data:pPitLjv8eih6xF8=,iv:40rapPAmT3aYVPczYgC1+y2YC3ooalszZ2rHOH/qgRg=,tag:c0FESy/gYi1VJ2yCxS+nBg==,type:str]
+      port: ENC[AES256_GCM,data:CYMg36k=,iv:/3u8cXNOicXNGtuO4+msTLwrGFPUZzggiWVD1ezBYYc=,tag:HpjIJs3ZOrGg1b/5+aw6pA==,type:int]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBaU0ZxTjNmYnM1cDh6L1k1
+            RUkyb0FxbWFobTdqRGlFOXRRT29kMGNmOGhJCmN1L05Vc0dZbzBSTmE1OVJ3dmgz
+            VXF5SmhHZXhOWmUyTUZJdEIwNyt6eDQKLS0tIGpXWVNPbEF0VEZPZ1kwbE9OTUtv
+            bXRZR2txQVNaeDRXWEE3ZVdsR1FsRWsKwzE9/IJZ27NjGMxaOgDy3qBkq01DfRg9
+            3CWfNAyJA7S4gzbBsYEZoSG0rGksXtDk77CG8uONdRGT+x0tKDeQZg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1x2rhgwpnwekfdeppgm5wll9rzsdqr48n0vk8xla4thtm9wwrzaps7urd3c
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAxc1ZKS1RaTGlNcURaTHNY
+            U1I0MTFJT282WXd4UFUwcE1KbzZFUHJSeUhFCmlDNGtiMlhhYTc0c3Q4Sk1hN3Yx
+            dGtXTFBhWUhZaFlFLzBDeGhQUzRtSkkKLS0tIGhGRlJJZzMzMjdxekx3bG1DaFUz
+            SVI4YWFWb0gwM05tT2p2Ulp3VEZ5aDQKvW9txN5T8cqF/XaD14xaRFiqnsd1zZIj
+            4ZJkfw2CvimFZJ7sotXqrmQJ/WRCmme+1fTgwqdRB6ft9E9Hnjx7Hw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1w488y6mddrsk48c505nf3rnufxgyyv8zx3qxj3x6st4saevlns5sn0v4qw
+    lastmodified: "2026-09-23T08:22:50Z"
+    mac: ENC[AES256_GCM,data:3tWo/ES5+8+cILUVJz0EodLrPY4oEv6bntNbPSLvzcp9mpZN9hlLTSyb4x+3R0lF4U30CXJhpOoUb8T/M1a/Vif+jxspYwA766YtJrSYFUhAAO2m7zumTQAPn67GkUe5p6yibDQi+DBCN0qIq0OaZvoWD/QE2gcldbm/afOqqxM=,iv:COA1TxYeHpRLFkRerbIygOm9PpNYiM1xN06E7BUS0sw=,tag:aaU0WZXFLltjijJXXoXL1g==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3

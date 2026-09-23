@@ -43,10 +43,13 @@ service_cidr: 10.96.0.0/12
 kube_api_port: 6443
 
 # Linode 上の HAProxy(L4 TCP プロキシ)。HTTP 以外のサービスを port で受け、wg 越しに
-# 拠点のノードへ転送する(ヘルスチェック付き)。転送先は 2 通り:
+# 拠点のノードへ転送する(ヘルスチェック付き)。転送先は 3 通り(どれか 1 つ):
 #   - site + node_port        : その拠点の全クラスタノードの NodePort(k8s の Service)
 #   - site + hosts(+ target_port): 指定ホストだけの同じ port(または target_port)。
 #                               Pod ではなくホスト上の docker が port を持つもの(Wings のゲームサーバー等)
+#   - site + minecraft_hosts  : 1 つの port で受け、Minecraft の handshake に入っている接続先
+#                               ホスト名(HTTPS の SNI 相当)でサーバーを選ぶ。どれにも一致しなければ切断。
+#                               DNS は *.minecraft.gw.morino.party(Cloudflare、ハブの公開 IP)
 # クライアント実IPは L4 では届かない(Minecraft なら前段の Velocity が
 # modern forwarding でプレイヤー IP を渡す前提)。
 # allowed_sources を指定すると nftables でその送信元だけに絞る(空なら全公開)。
@@ -55,7 +58,12 @@ kube_api_port: 6443
 tcp_routes:
   # Pelican Wings(site1-node2、docs/admin/wings)。SFTP とゲームサーバーの割り当てポート
   - { name: wings-sftp, port: 2022, site: site1, hosts: [site1-node2] }
-  - { name: game-25565, port: 25565, site: site1, hosts: [site1-node2] }
+  # Minecraft はすべて 25565 で受け、ホスト名で振り分ける。ホスト名 → サーバーの対応表は
+  # 公開しないので sops で暗号化した group_vars/gateway/minecraft.sops.yml(形式は .example)
+  - name: minecraft
+    port: 25565
+    site: site1
+    minecraft_hosts: "{{ minecraft_hosts_site1 }}"
 #  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
 
 # ハブを入口にする公開名(site1-node2.gw.morino.party 等)は Cloudflare の A / AAAA(ハブの公開 IP、

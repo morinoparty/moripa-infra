@@ -13,7 +13,7 @@
 
 ```
 [インターネット]
-      │ 80/443 → Caddy(L7, TLS 終端) / L4 は HAProxy(tcp_routes、当面なし)
+      │ 80/443 → Caddy(L7, TLS 終端) / L4 は HAProxy(tcp_routes: Wings の SFTP・ゲーム)
 [Linode Nanode]  ← WireGuard ハブ / 出口 / リバースプロキシ (10.100.0.1)
       │ wg0 (hub-and-spoke)
       │
@@ -32,7 +32,7 @@
   → 詳細は [docs/content/docs/architecture/wireguard.mdx](docs/content/docs/architecture/wireguard.mdx)
 - 拠点間はクラスタレベルで**接続しない**(→ [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx))
 - HTTP/HTTPS の公開は Linode 上の **Caddy** がホスト名ごとに対象拠点のノードへ転送(TLS 終端・ノード障害時の自動切替)。
-  HTTP 以外(将来の Minecraft など)は **HAProxy** が対象拠点の NodePort へ転送する仕組みを用意してある(`tcp_routes`、当面は空)
+  HTTP 以外(Wings の SFTP・ゲームサーバーなど)は **HAProxy** が対象拠点の NodePort か指定ノードの port へ転送する(`tcp_routes`)
 - 各拠点の control-plane は 1台(etcd 1メンバー)なので **HA ではない**。etcd バックアップが前提
 
 ## ディレクトリ構成
@@ -61,12 +61,13 @@ moripa-infra/
 │   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades, ノードは zsh + oh-my-zsh
 │   │   ├── wireguard/          # hub/spoke 両対応 + nftables (masquerade / 公開ポート / MSS clamp)
 │   │   ├── cluster_lan/        # クラスタ用の第 2 サブネットを LAN NIC に追加(netplan)
-│   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス)
+│   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス、gateway_fronted_names → ハブ)
 │   │   ├── auth_proxy/         # Linode 上の oauth2-proxy(GitHub org / MineAuth staff)
 │   │   ├── reverse_proxy/      # Linode 上の Caddy(gateway/caddy/Caddyfile を git から取り込む)
-│   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort)
+│   │   ├── tcp_proxy/          # Linode 上の HAProxy(tcp_routes → 拠点ノードの NodePort / 指定ノードの port)
 │   │   ├── k8s_prereq/         # containerd (config v3), kubeadm/kubelet
 │   │   ├── longhorn_prereq/    # ルート LV を VG 全体に拡張, iscsid, nfs-common, multipathd 停止
+│   │   ├── wings_host/         # Pelican Wings を置くノード(wings_nodes)に docker + ユーザー / ディレクトリ
 │   │   └── k8s_bootstrap/      # kube-vip, kubeadm init/join 冪等化, Cilium Helm
 │   └── playbooks/              # site.yml = gateway.yml + cluster.yml
 ├── kubernetes/                 # 各拠点の ArgoCD が watch する領域
@@ -86,7 +87,7 @@ moripa-infra/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
 │       │   │   ├── storage/            # Longhorn の values + UI の Ingress(private ホスト名)
 │       │   │   └── monitoring/         # kube-prometheus-stack の values + UI の Ingress(private ホスト名)
-│       │   └── apps/               # 個別アプリの Application(当面は空。Minecraft は後回し)
+│       │   └── apps/               # 個別アプリの Application(hermes / wings)
 │       └── site2/              # site1 と同構造
 ├── scripts/                    # check_consistency.py / check_secrets.sh
 ├── docs/                       # fumadocs ドキュメントサイト(Workers へ自動デプロイ)
@@ -126,7 +127,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |
-| 外部公開ポート | HTTP/HTTPS 80/443 | Caddy(`gateway/caddy/Caddyfile`。`*.site<N>.dev.morino.party` → 拠点、`*.site<N>.private.dev.morino.party` は oauth2-proxy 認証)。L4 は HAProxy(`tcp_routes`、当面は空)。SSH は公開せず wg 経由のみ |
+| 外部公開ポート | HTTP/HTTPS 80/443、Wings API 8443、L4 2022/25565 | Caddy(`gateway/caddy/Caddyfile`。`*.site<N>.dev.morino.party` → 拠点、`*.site<N>.private.dev.morino.party` は oauth2-proxy 認証)。L4 は HAProxy(`tcp_routes`)。SSH は公開せず wg 経由のみ |
 | 秘密情報の管理 | sops + age | Ansible vars と k8s Secret の両方で使える。cluster 鍵は両拠点共有(repo は public のため deploy key 不要) |
 
 ## 注意: Nanode の転送量上限

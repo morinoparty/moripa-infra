@@ -52,7 +52,8 @@ upstream は inventory から自動導出されるため、ノードの増減で
 
 `tcp_routes` に `{ name, port, site, node_port, allowed_sources }` を追加すると、
 Linode 上の HAProxy がその port を `site` の全ノードの NodePort へ転送する。
-当面は空(Minecraft は最初の構築対象から外している)。Minecraft を置くときは
+`node_port` の代わりに `hosts: [<host>]` を書くと、そのホストの同じ port(`target_port` で変更可)
+へ転送する(Wings のゲームサーバーはこちら。`/docs/admin/wings`)。k8s に Minecraft を置くときは
 `{ name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: [...] }`
 のように行を足し、`terraform` の `public_tcp_ports` にもポートを足す。拠点側には
 同じ `node_port` の NodePort Service(`externalTrafficPolicy: Cluster`)を

@@ -1,0 +1,19 @@
+# Pelican Wings を置くノード(inventory の wings_nodes)。roles/wings_host と
+# kubernetes/sites/<site>/apps/wings が同じ値を使う(check-consistency は見ていないので手で揃える)
+
+# Wings がゲームサーバーのファイル・コンテナを動かす uid/gid。
+# 公式の既定 988 は Ubuntu 26.04 で polkitd と衝突するため別の値にする
+wings_uid: 2988
+wings_gid: 2988
+
+# Wings API(hostNetwork)。正規の経路はハブの Caddy(:8443 で TLS 終端)→ wg0 だけ
+wings_api_port: 8080
+# SFTP(hostNetwork)。ハブの HAProxy(tcp_routes の wings-sftp)→ wg0
+wings_sftp_port: 2022
+
+# roles/k8s_prereq の ingress フィルタ(wg0 / lo 以外から drop)に足すポート。
+# Wings API / SFTP を拠点 LAN から直接叩けないようにする。
+# ゲームサーバーの port は docker の DNAT(forward 経路)なのでこのフィルタの対象外
+ingress_filter_extra_ports:
+  - "{{ wings_api_port }}"
+  - "{{ wings_sftp_port }}"

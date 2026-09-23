@@ -104,8 +104,8 @@ nftables も wg0 発の 53 番だけ通す。クライアントはそのゾー�
 
 | | Caddy(`gateway/caddy/Caddyfile`) | HAProxy(`tcp_routes`) |
 |---|---|---|
-| 対象 | HTTP/HTTPS(80/443) | L4 のサービス(Minecraft など。当面 `tcp_routes` は空) |
-| 転送先 | ホスト名ごとに対象拠点の**全ノード** `:80`(Cilium の ingress controller、hostNetwork) | port ごとに対象拠点の**全ノード**の NodePort(`externalTrafficPolicy: Cluster`) |
+| 対象 | HTTP/HTTPS(80/443。Wings API は 8443) | L4 のサービス(Wings の SFTP・ゲームサーバーなど) |
+| 転送先 | ホスト名ごとに対象拠点の**全ノード** `:80`(Cilium の ingress controller、hostNetwork) | port ごとに対象拠点の**全ノード**の NodePort(`externalTrafficPolicy: Cluster`)、または `hosts` で指定したノードの port |
 | ノード障害 | passive ヘルスチェックで別ノードへ自動切替 | TCP ヘルスチェックで別ノードへ自動切替 |
 | TLS | Caddy が終端(Let's Encrypt DNS-01 / Cloudflare でワイルドカード) | アプリ側 |
 | クライアント実IP | `X-Forwarded-For`(Caddy が付け、Envoy がハブの `10.100.0.1` を末尾に追記する。アプリは先頭を読む) | 届かない。Minecraft なら前段の Velocity が modern forwarding で渡す |
@@ -120,7 +120,7 @@ Caddy / HAProxy → ノードの通信はハブ自身(`10.100.0.1`)を送信元�
 
 ノードの `:80` は Envoy が hostNetwork で全 NIC に開くが、ノード側の nftables
 (`roles/k8s_prereq` の `ingress-filter.service`、独立した table `inet moripa_ingress_filter`)
-が **wg0 と lo 以外からの `:80` を drop** する。拠点 LAN の端末がノードの IP に `Host` ヘッダを
+が **wg0 と lo 以外からの `:80` を drop** する(Wings を置くノードは `:8080` / `:2022` も)。拠点 LAN の端末がノードの IP に `Host` ヘッダを
 付けて直接送っても、oauth2-proxy を素通りして Headlamp などに触ることはできない。
 
 ## nftables 設定例(ハブ)

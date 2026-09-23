@@ -1,0 +1,123 @@
+# ~/home/Yggdrasill の manifests/pelican/wings.yml を元にしたもの。差分:
+#   - site1-node2 に固定し hostNetwork(API :8080 / SFTP :2022 を host で直接 listen)。
+#     NodePort で番号を付け替えると config.yml の port と外から見える port がずれるため
+#   - TLS はハブの Caddy が終端する(site1-node2.gw.morino.party:8443 → wg → :8080)ので
+#     letsencrypt のマウントは無し。config.yml は api.ssl.enabled: false
+#   - config.yml は sops で暗号化して git に置く(secrets.sops.yaml)
+#   - uid/gid は 2988(988 は Ubuntu 26.04 で polkitd と衝突)。ansible/group_vars/wings_nodes と揃える
+#   - イメージはリリースタグのダイジェストで固定(latest は main の開発ビルド)
+# ゲームサーバーのコンテナは host の dockerd が持つので、この Pod を消しても止まらない。
+# hostPath は Pod 内と host で同じパスにする(Wings が docker に渡す bind mount のパスは host 側で解決される)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wings
+  labels:
+    app: wings
+spec:
+  replicas: 1
+  # hostNetwork で同じ port を掴むので、古い Pod を先に止める
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: wings
+  template:
+    metadata:
+      labels:
+        app: wings
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: site1-node2
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # config.yml は Secret wings-config(secrets.sops.yaml、ksops)から host の /etc/pelican へコピーする。
+      # Wings は起動時に config.yml を書き戻す(cmd/root.go の WriteToDisk)ので Secret を直接
+      # マウントできない。Pod が起動するたびに git の内容で上書きされる(正は git)
+      initContainers:
+        - name: install-config
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - install -m 600 /config-src/config.yml /etc/pelican/config.yml
+          volumeMounts:
+            - mountPath: /config-src
+              name: wings-config
+              readOnly: true
+            - mountPath: /etc/pelican
+              name: pelican-etc
+      containers:
+        - name: wings
+          # v1.0.0-beta29(2026-08-16)
+          image: ghcr.io/pelican/wings:v1.0.0-beta29@sha256:39837cfc49b0513313e57dc4b977a769cb784cf81af3f25a5ea46d869b4b0846
+          tty: true
+          ports:
+            - name: api
+              containerPort: 8080
+            - name: sftp
+              containerPort: 2022
+          env:
+            - name: TZ
+              value: Asia/Tokyo
+            - name: WINGS_UID
+              value: "2988"
+            - name: WINGS_GID
+              value: "2988"
+            - name: WINGS_USERNAME
+              value: pelican
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - mountPath: /var/run/docker.sock
+              name: docker-sock
+            - mountPath: /var/lib/docker/containers
+              name: docker-containers
+            - mountPath: /etc/pelican
+              name: pelican-etc
+            - mountPath: /var/lib/pelican
+              name: pelican-lib
+            - mountPath: /var/log/pelican
+              name: pelican-log
+            - mountPath: /tmp/pelican
+              name: pelican-tmp
+            - mountPath: /etc/ssl/certs
+              name: ssl-certs
+              readOnly: true
+      volumes:
+        - name: wings-config
+          secret:
+            secretName: wings-config
+            defaultMode: 0400
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+        - name: docker-containers
+          hostPath:
+            path: /var/lib/docker/containers
+            type: Directory
+        - name: pelican-etc
+          hostPath:
+            path: /etc/pelican
+            type: Directory
+        - name: pelican-lib
+          hostPath:
+            path: /var/lib/pelican
+            type: Directory
+        - name: pelican-log
+          hostPath:
+            path: /var/log/pelican
+            type: Directory
+        - name: pelican-tmp
+          hostPath:
+            path: /tmp/pelican
+            type: Directory
+        - name: ssl-certs
+          hostPath:
+            path: /etc/ssl/certs
+            type: Directory

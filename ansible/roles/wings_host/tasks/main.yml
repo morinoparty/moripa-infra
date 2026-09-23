@@ -1,0 +1,113 @@
+# Pelican Wings を置くノードの前提(inventory の wings_nodes)。
+# Wings 本体は k8s の Pod(kubernetes/sites/<site>/apps/wings)で、host の docker.sock を
+# マウントしてゲームサーバーを docker コンテナとして起動する。ここでは docker と
+# Wings が使うユーザー・ディレクトリを用意する。手順: docs/admin/wings
+#
+# docker.io は k8s と同じ containerd(/run/containerd/containerd.sock、namespace moby)を使う。
+# kubelet は k8s.io namespace しか触らないので互いのコンテナは干渉しない。
+# ただしゲームサーバーのリソースは kubelet から見えない(スケジューラはこのノードの
+# 空きを実際より多く見積もる)
+# daemon.json を先に置き、docker の初回起動から設定が効くようにする
+
+- name: /etc/docker を作成
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+  become: true
+  tags: [wings]
+
+# daemon.json は JSON なのでコメントを書けない(未知のキーがあると dockerd が起動しない)。
+# ip-forward-no-drop: FORWARD の policy を DROP にしない / live-restore: dockerd 再起動でコンテナを止めない
+- name: dockerd の設定
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+  become: true
+  notify: Restart docker
+  tags: [wings]
+
+# 推奨の ubuntu-fan(fan networking)は使わないので入れない
+- name: docker を導入
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags: [wings]
+
+- name: 設定反映(docker の再起動を先に済ませる)
+  ansible.builtin.meta: flush_handlers
+  tags: [wings]
+
+- name: docker を有効化・起動
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  become: true
+  tags: [wings]
+
+# Cilium は iptables の FORWARD から CILIUM_FORWARD へ飛ばしてPod の転送を許可している。
+# docker が FORWARD の policy を DROP にしても Pod 間通信は通るが、念のため
+# daemon.json の ip-forward-no-drop で policy を触らせず、ここで確認する
+- name: FORWARD の policy が ACCEPT のままで CILIUM_FORWARD が残っていることを確認
+  ansible.builtin.command: iptables -S FORWARD
+  register: wings_host_forward
+  changed_when: false
+  failed_when: >-
+    '-P FORWARD ACCEPT' not in wings_host_forward.stdout_lines
+    or 'CILIUM_FORWARD' not in wings_host_forward.stdout
+  become: true
+  tags: [wings]
+
+# Wings は WINGS_UID/GID でゲームサーバーのファイルとコンテナを扱う。
+# host 側にも同じ id のユーザーを作って番号を予約しておく(ls で名前が出る)
+- name: pelican グループ
+  ansible.builtin.group:
+    name: pelican
+    gid: "{{ wings_gid }}"
+    system: true
+  become: true
+  tags: [wings]
+
+- name: pelican ユーザー
+  ansible.builtin.user:
+    name: pelican
+    uid: "{{ wings_uid }}"
+    group: pelican
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/pelican
+    create_home: false
+  become: true
+  tags: [wings]
+
+# Pod とゲームサーバーのコンテナは同じ host パスを見る(Wings が docker に渡す bind mount の
+# パスは host 側で解決されるため、Pod 内と host で同じパスにマウントする)
+- name: Wings のディレクトリ
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/pelican
+    - /var/lib/pelican
+    - /var/lib/pelican/volumes
+    - /var/log/pelican
+    - /tmp/pelican
+  become: true
+  tags: [wings]
+
+- name: /tmp/pelican を再起動後も作る(tmpfiles.d)
+  ansible.builtin.copy:
+    dest: /etc/tmpfiles.d/pelican.conf
+    content: |
+      # Ansible managed(roles/wings_host)。Wings Pod が hostPath でマウントする
+      d /tmp/pelican 0755 root root -
+    mode: "0644"
+  become: true
+  tags: [wings]

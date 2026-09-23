@@ -199,6 +199,15 @@ check(
 check(len(tcp_ports) == len(tcp_routes), "tcp_routes の port が重複している")
 for r in tcp_routes:
     check(r.get("site") in SITES, f"tcp_routes {r.get('name')} の site={r.get('site')} が {SITES} に無い")
+    check(
+        ("node_port" in r) != ("hosts" in r),
+        f"tcp_routes {r.get('name')} は node_port(全ノード)か hosts(指定ホスト)のどちらか一方を持つこと",
+    )
+    for h in r.get("hosts") or []:
+        check(
+            h in hosts and hosts[h]["site"] == r.get("site"),
+            f"tcp_routes {r.get('name')} の hosts={h} が inventory の {r.get('site')} に無い",
+        )
     for cidr in r.get("allowed_sources") or []:
         try:
             ipaddress.ip_network(cidr)

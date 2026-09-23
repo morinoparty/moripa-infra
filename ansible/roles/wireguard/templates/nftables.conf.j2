@@ -22,7 +22,7 @@ table inet filter {
     # Caddy(HTTP/HTTPS リバースプロキシ)の公開ポート。ACME HTTP-01 にも 80 が必要
     tcp dport { {{ proxy_public_ports | join(', ') }} } accept
 {% for r in tcp_routes %}
-    # HAProxy: {{ r.name }} → {{ r.site }} の NodePort {{ r.node_port }}
+    # HAProxy: {{ r.name }} → {{ r.hosts | join(',') if r.hosts is defined else r.site ~ ' の NodePort ' ~ r.node_port }}
 {% if r.allowed_sources | default([]) | length > 0 %}
     tcp dport {{ r.port }} ip saddr { {{ r.allowed_sources | join(', ') }} } accept
 {% else %}

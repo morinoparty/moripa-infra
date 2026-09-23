@@ -42,18 +42,28 @@ pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
 kube_api_port: 6443
 
-# Linode 上の HAProxy(L4 TCP プロキシ)。Minecraft など HTTP 以外のサービスを
-# port で受け、対象拠点の全ノードの NodePort へ wg 越しに転送する(ヘルスチェック付き)。
+# Linode 上の HAProxy(L4 TCP プロキシ)。HTTP 以外のサービスを port で受け、wg 越しに
+# 拠点のノードへ転送する(ヘルスチェック付き)。転送先は 2 通り:
+#   - site + node_port        : その拠点の全クラスタノードの NodePort(k8s の Service)
+#   - site + hosts(+ target_port): 指定ホストだけの同じ port(または target_port)。
+#                               Pod ではなくホスト上の docker が port を持つもの(Wings のゲームサーバー等)
 # クライアント実IPは L4 では届かない(Minecraft なら前段の Velocity が
 # modern forwarding でプレイヤー IP を渡す前提)。
-# allowed_sources を指定すると nftables でその送信元だけに絞る(Velocity の IP を
-# 入れて、バックエンドへの直接接続を防ぐこと。空なら全公開)。
+# allowed_sources を指定すると nftables でその送信元だけに絞る(空なら全公開)。
 # terraform/envs/prod の public_tcp_ports = tcp_routes の port + proxy_public_ports
-# であること(check-consistency で検査)
-# 当面は空(Minecraft は最初の構築対象から外している)。HAProxy 自体は入れてあるので、
-# 行を足して make gateway + make tf-apply すれば公開できる
-tcp_routes: []
+# であること(check-consistency で検査)。行を足したら make gateway + make tf-apply
+tcp_routes:
+  # Pelican Wings(site1-node2、docs/admin/wings)。SFTP とゲームサーバーの割り当てポート
+  - { name: wings-sftp, port: 2022, site: site1, hosts: [site1-node2] }
+  - { name: game-25565, port: 25565, site: site1, hosts: [site1-node2] }
 #  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
+
+# ハブを入口にする公開名。Cloudflare(外)ではハブの公開 IP(A / AAAA、DNS only)、
+# wg 内ではハブの dnsmasq がハブの wg アドレス(10.100.0.1)を返す。wg は hub-and-spoke なので
+# wg peer からの通信は元々ハブを通る。どちらから引いても同じ名前・同じポートで同じ
+# Caddy / HAProxy に着く(内外で FQDN と port を揃えるための仕組み)
+gateway_fronted_names:
+  - site1-node2.gw.morino.party
 
 # Linode 上の Caddy(リバースプロキシ)。HTTP/HTTPS はここで受けて TLS を終端し、
 # ホスト名ごとに対象拠点の全ノード :80(Cilium Gateway, hostNetwork)へ wg 越しに転送する。
@@ -72,7 +82,8 @@ tcp_routes: []
 # DNS は上記の各ワイルドカード(*.site1.dev 等)と auth.dev を gateway_public_ip に
 # 向ける(DNS only / 灰色雲)。証明書取得自体は A レコードに依存しない。
 # クライアント実IPは X-Forwarded-For の先頭で渡す(Envoy がハブの wg アドレスを末尾に追記する)
-proxy_public_ports: [80, 443]
+# 8443 は Wings API(site1-node2.gw.morino.party:8443 → site1-node2:8080。Caddyfile 参照)
+proxy_public_ports: [80, 443, 8443]
 # Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取得し、apt 版を
 # dpkg-divert + update-alternatives で差し替える(バージョンは versions.yml)。
 # Cloudflare の API トークン(Zone.DNS:Edit, morino.party)は

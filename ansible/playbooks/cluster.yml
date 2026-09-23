@@ -20,6 +20,12 @@
   roles:
     - k8s_prereq
 
+- name: Pelican Wings の前提(docker / ユーザー / ディレクトリ)(wings_nodes)
+  hosts: wings_nodes
+  force_handlers: true
+  roles:
+    - wings_host
+
 - name: Longhorn 前提(データ用 LV / iscsid / nfs-common)(全拠点)
   hosts: k8s_cluster
   force_handlers: true

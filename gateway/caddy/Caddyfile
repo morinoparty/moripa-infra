@@ -48,6 +48,17 @@ import local.d/*.caddy
 	import to_site2
 }
 
+# ---- Pelican Wings(site1-node2、docs/admin/wings)-----------------------------------
+# パネルとブラウザ(コンソールの WebSocket)が叩く Wings API。TLS はここで終端し、
+# wg 越しに node2 の :8080(hostNetwork の Wings Pod)へ平文で渡す。
+# DNS は外が Cloudflare(ハブの公開 IP)、wg 内がハブの dnsmasq(10.100.0.1)で、
+# どちらから来ても同じ名前・同じ :8443(network.yml の gateway_fronted_names)。
+# SFTP(:2022)とゲームサーバーの port は HAProxy(tcp_routes)
+site1-node2.gw.morino.party:8443 {
+	import cf_tls
+	reverse_proxy 10.100.0.12:8080
+}
+
 # ---- 認証ポータル ----------------------------------------------------------------
 auth.dev.morino.party {
 	import cf_tls

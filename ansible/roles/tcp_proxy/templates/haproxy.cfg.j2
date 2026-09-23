@@ -1,6 +1,7 @@
 # {{ ansible_managed }}
 # 生成元: ansible/group_vars/all/network.yml の tcp_routes
-# 各 port を対象拠点の全ノードの NodePort へ L4 で転送する(実IPは届かない)。
+# 各 port を対象拠点の全ノードの NodePort(node_port)か、指定ホスト(hosts)の
+# target_port(省略時は同じ port)へ L4 で転送する(実IPは届かない)。
 # 送信元の制限(allowed_sources)は nftables 側で行う
 
 global
@@ -24,11 +25,19 @@ defaults
     timeout server 1h
 
 {% for r in tcp_routes %}
+{% if r.hosts is defined %}
+{% set targets = r.hosts %}
+{% set target_port = r.target_port | default(r.port) %}
+{% else %}
+{% set targets = groups[r.site] | intersect(groups['k8s_cluster']) | sort %}
+{% set target_port = r.node_port %}
+{% endif %}
 listen {{ r.name }}
-    bind *:{{ r.port }}
+    # v4 と v6(Cloud Firewall は両方通す。gw.morino.party の AAAA 経由の接続もある)
+    bind :::{{ r.port }} v4v6
     balance leastconn
-{% for h in groups[r.site] | intersect(groups['k8s_cluster']) | sort %}
-    server {{ h }} {{ hostvars[h].wg_address }}:{{ r.node_port }} check inter 5s fall 2 rise 2
+{% for h in targets %}
+    server {{ h }} {{ hostvars[h].wg_address }}:{{ target_port }} check inter 5s fall 2 rise 2
 {% endfor %}
 
 {% endfor %}

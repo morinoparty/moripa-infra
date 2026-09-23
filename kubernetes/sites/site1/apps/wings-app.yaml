@@ -1,0 +1,24 @@
+# Pelican Wings(ゲームサーバーのデーモン)。site1-node2 の docker.sock を使ってゲームサーバーを
+# docker コンテナとして起動する。前提(docker / ユーザー / ディレクトリ)は Ansible の
+# roles/wings_host(inventory の wings_nodes)。公開経路・初期設定は docs/admin/wings
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: wings
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/morinoparty/moripa-infra.git
+    targetRevision: main
+    path: kubernetes/sites/site1/apps/wings
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: wings
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

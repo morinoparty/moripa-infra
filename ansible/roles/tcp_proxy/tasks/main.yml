@@ -1,5 +1,6 @@
 # Linode(ハブ)上の HAProxy(L4 TCP)。tcp_routes の port を受けて対象拠点の
-# 全ノードの NodePort へ wg 越しに転送する。tcp_routes が空でも HAProxy は入れておく
+# 全ノードの NodePort(node_port)か、指定ホスト(hosts)の port へ wg 越しに転送する。
+# tcp_routes が空でも HAProxy は入れておく
 # (将来 Minecraft を置くときは前段の Velocity からここへ接続し、プレイヤー IP は
 # modern forwarding で渡す想定)。
 # 設計: docs/content/docs/architecture/wireguard.mdx(公開経路の節)
@@ -9,7 +10,12 @@
     that:
       - item.site in groups
       - groups[item.site] | intersect(groups['k8s_cluster']) | length > 0
-    fail_msg: "tcp_routes[{{ item.name }}].site={{ item.site }} が inventory のグループに無い"
+      # 転送先はどちらか一方: node_port(全ノード)か hosts(指定ホスト、その拠点のノードに限る)
+      - (item.node_port is defined) != (item.hosts is defined)
+      - item.hosts is not defined or (item.hosts | length > 0 and item.hosts | difference(groups[item.site] | intersect(groups['k8s_cluster'])) | length == 0)
+    fail_msg: >-
+      tcp_routes[{{ item.name }}]: site={{ item.site }} が inventory のグループに無いか、
+      node_port と hosts の指定が不正(どちらか一方、hosts は site のクラスタノード)
   loop: "{{ tcp_routes }}"
   loop_control:
     label: "{{ item.name }}"

@@ -58,7 +58,7 @@ moripa-infra/
 │   │   └── site1.yml, site2.yml  # 拠点別(クラスタ用サブネット / VIP / グループ名)
 │   ├── host_vars/<host>/       # wg 公開鍵(平文) + 秘密鍵(sops 暗号化)
 │   ├── roles/
-│   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades
+│   │   ├── base/               # ユーザー, sshd, sysctl, unattended-upgrades, ノードは zsh + oh-my-zsh
 │   │   ├── wireguard/          # hub/spoke 両対応 + nftables (masquerade / 公開ポート / MSS clamp)
 │   │   ├── cluster_lan/        # クラスタ用の第 2 サブネットを LAN NIC に追加(netplan)
 │   │   ├── wg_dns/             # Linode 上の dnsmasq(<host>.wg.morino.party → wg アドレス)
@@ -100,7 +100,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 1. **Terraform**: Linode Nanode 作成 (`terraform/envs/prod`)
 2. **Ansible `gateway.yml`**: Linode に WireGuard ハブ + nftables + dnsmasq + Caddy + HAProxy を設定
 3. **Ansible `cluster.yml`**(両拠点を順に処理):
-   1. `base` + `wireguard`: 全ノードを spoke として接続
+   1. `base` + `wireguard`: 全ノードを spoke として接続(`base` はノードの管理ユーザーを zsh + oh-my-zsh にする。`admin_shell` / `oh_my_zsh_theme`)
    2. `cluster_lan`: 第 2 サブネットの固定アドレスを LAN NIC に追加(ルーター設定不要)
    3. `k8s_prereq`: containerd / kubeadm 導入
    4. `k8s_bootstrap`: 拠点ごとに node1 で `kubeadm init --skip-phases=addon/kube-proxy` → node2 を worker として join

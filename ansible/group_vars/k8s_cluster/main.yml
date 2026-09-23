@@ -1,5 +1,7 @@
 wg_role: spoke
 ansible_user: "{{ admin_user }}"
+# ノードの管理ユーザーは zsh + oh-my-zsh(テーマ等は group_vars/all/main.yml)
+admin_shell: /usr/bin/zsh
 
 # LAN NIC 名(lan_interface)は拠点ごとに group_vars/site<N>.yml で固定する。
 # 未指定なら roles/cluster_lan/tasks/detect.yml が main テーブルの default route から

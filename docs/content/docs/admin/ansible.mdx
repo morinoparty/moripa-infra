@@ -85,7 +85,11 @@ flowchart TD
     E --> F["Cilium 投入 + 検証(site1・site2 それぞれの先頭ノード)"]
 ```
 
-`ansible/playbooks/cluster.yml` の実際のプレイ構成に対応する。site1 と
+`ansible/playbooks/cluster.yml` の実際のプレイ構成に対応する。`base` はノードでは
+管理ユーザーのログインシェルを zsh にして oh-my-zsh(テーマ `agnoster`)を入れる
+(`group_vars/k8s_cluster/main.yml` の `admin_shell`。ハブは bash のまま。テーマ・プラグインは
+`group_vars/all/main.yml` の `oh_my_zsh_theme` / `oh_my_zsh_plugins`)。agnoster は
+Powerline のグリフを使うので、接続元の端末側に Powerline 対応フォントが要る。site1 と
 site2 は独立クラスタなので、それぞれの control-plane 構築は互いに依存しない。
 site1 は 3台とも control-plane で、node1 の `kubeadm init` のあと node2・node3 が
 `--control-plane` で順に join する(`serial: 1` で etcd メンバー追加の同時実行を

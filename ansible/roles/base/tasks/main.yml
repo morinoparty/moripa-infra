@@ -23,12 +23,26 @@
   no_log: true
   become: false
 
+# usermod -s はシェルの存在を確認しないので、ログインシェルを zsh に切り替える前に
+# 必ず入れておく(無いまま切り替えると以降の SSH 接続が全部失敗する)。
+# git は oh-my-zsh の clone 用
+- name: zsh を導入(admin_shell が zsh のとき)
+  ansible.builtin.apt:
+    name:
+      - zsh
+      - git
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: admin_shell == '/usr/bin/zsh'
+  become: true
+
 - name: 管理ユーザーを作成
   ansible.builtin.user:
     name: "{{ admin_user }}"
     groups: sudo
     append: true
-    shell: /bin/bash
+    shell: "{{ admin_shell }}"
     password_lock: true
   become: true
 
@@ -99,3 +113,24 @@
     dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
     mode: "0644"
   become: true
+
+# oh-my-zsh は installer(curl | sh)ではなく git clone で入れる。update: false なので
+# 一度入れたら master の更新で毎回 changed にならない(更新は手動で omz update)。
+# 接続ユーザー = admin_user なので become なしで HOME 配下に置く
+- name: oh-my-zsh を取得(admin_shell が zsh のとき)
+  ansible.builtin.git:
+    repo: https://github.com/ohmyzsh/ohmyzsh.git
+    dest: "/home/{{ admin_user }}/.oh-my-zsh"
+    version: master
+    depth: 1
+    update: false
+  when: admin_shell == '/usr/bin/zsh'
+  become: false
+
+- name: .zshrc を配置(admin_shell が zsh のとき)
+  ansible.builtin.template:
+    src: zshrc.j2
+    dest: "/home/{{ admin_user }}/.zshrc"
+    mode: "0644"
+  when: admin_shell == '/usr/bin/zsh'
+  become: false

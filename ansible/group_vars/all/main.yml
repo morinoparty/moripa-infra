@@ -6,6 +6,14 @@ admin_ssh_pubkeys:
 
 timezone: Asia/Tokyo
 
+# 管理ユーザーのログインシェル。/usr/bin/zsh にすると base ロールが zsh と oh-my-zsh を
+# 入れて ~/.zshrc を配る(ノード側の group_vars/k8s_cluster/main.yml で有効化。
+# ハブは bash のまま)。テーマ・プラグインもここで切り替える
+admin_shell: /bin/bash
+oh_my_zsh_theme: agnoster  # Powerline 系グリフを使うので、接続元の端末フォントに Powerline 対応が要る
+oh_my_zsh_plugins:
+  - git
+
 # unattended-upgrades の対象から外すパッケージ
 # (k8s 系と containerd の不意の更新・再起動を防ぐ。更新は計画的に手動で)
 unattended_upgrades_blacklist:

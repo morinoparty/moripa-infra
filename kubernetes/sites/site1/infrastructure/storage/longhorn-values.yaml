@@ -25,6 +25,9 @@ defaultSettings:
   upgradeChecker: false
   allowCollectingLonghornUsageMetrics: false
   deletingConfirmationFlag: false
+  # filesystem-trim(recurringjob-trim.yaml)のときに、削除予約済みのスナップショットも
+  # 消して領域を返す(ノード再起動時のレプリカ再構築で作られるシステムスナップショットなど)
+  removeSnapshotsDuringFilesystemTrim: true
 
 longhornUI:
   replicas: 1

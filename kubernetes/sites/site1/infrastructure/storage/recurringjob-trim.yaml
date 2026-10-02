@@ -1,0 +1,21 @@
+# 全ボリューム(default グループ)の filesystem-trim を毎日 03:00 JST に走らせる。
+# Prometheus のように書いては消すボリュームは、TRIM しないと消したファイルの領域が
+# Longhorn 側で使用中のまま残り、actual size が中身より大きく膨らむ(レプリカごとにノードの
+# ディスクを食う)。削除予約済みのスナップショットの領域も解放するため、values の
+# removeSnapshotsDuringFilesystemTrim と組み合わせる。
+# ラベルの無いボリュームは自動で default グループに入るので、新しい PVC も対象になる
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: filesystem-trim
+  namespace: longhorn-system
+spec:
+  name: filesystem-trim
+  task: filesystem-trim
+  # longhorn-manager の cron は UTC
+  cron: "0 18 * * *"
+  groups:
+    - default
+  retain: 0
+  concurrency: 1
+  labels: {}

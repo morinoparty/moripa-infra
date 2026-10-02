@@ -3,3 +3,4 @@ kind: Kustomization
 # Longhorn 本体は bootstrap/applications/storage.yaml の Helm source。ここは付随リソース
 resources:
   - ingress.yaml
+  - recurringjob-trim.yaml

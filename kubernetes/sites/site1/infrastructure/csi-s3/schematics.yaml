@@ -13,14 +13,12 @@ spec:
   accessModes:
     - ReadOnlyMany
   persistentVolumeReclaimPolicy: Retain
-  # 実在しない StorageClass 名。PVC 側と一致させて claimRef で事前に結び付ける
-  # (既定の StorageClass = Longhorn に動的プロビジョニングさせないため)
+  # 実在しない StorageClass 名。PVC 側と一致させ、PVC の volumeName でこの PV に結び付ける
+  # (既定の StorageClass = Longhorn に動的プロビジョニングさせないため)。
+  # claimRef はあえて書かない: ObjectReference は atomic な struct なので、bind 後に PV コントローラが
+  # uid / resourceVersion を書くと Argo CD(SSA + selfHeal)の差分が永久に OutOfSync になり、
+  # uid 無しの claimRef を書き戻し続けてしまう。claimRef は PV コントローラにだけ書かせる
   storageClassName: csi-s3-static
-  claimRef:
-    apiVersion: v1
-    kind: PersistentVolumeClaim
-    namespace: worlds
-    name: schematics
   csi:
     driver: ru.yandex.s3.csi
     # <バケット>/<プレフィックス>

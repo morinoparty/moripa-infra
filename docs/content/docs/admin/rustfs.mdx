@@ -110,8 +110,9 @@ worlds のワールド Pod は schematic を S3 API ではなくファイルと�
   更新でマウントが切れたまま戻らないことがある(upstream issue
   [#179](https://github.com/yandex-cloud/k8s-csi-s3/issues/179) /
   [#156](https://github.com/yandex-cloud/k8s-csi-s3/issues/156))
-- PVC の `storageClassName` は実在しない `csi-s3-static` で、PV の `claimRef` と PVC の `volumeName` で
-  事前に結び付けている。省略すると既定の StorageClass(Longhorn)で新しいボリュームが作られてしまう
+- PVC の `storageClassName` は実在しない `csi-s3-static` で、PVC の `volumeName` で PV に結び付けている。
+  省略すると既定の StorageClass(Longhorn)で新しいボリュームが作られてしまう。PV 側の `claimRef` は
+  bind 時に PV コントローラが uid 付きで書くので、マニフェストには書かない(書くと Argo CD が永久に OutOfSync になる)
 - namespace `worlds` は csi-s3 の Application(wave 1)が作る(`infrastructure/csi-s3/namespace-worlds.yaml`)。
   worlds の Application(wave 2)より先に PVC を置くため。worlds 側の `CreateNamespace=true` は
   「無ければ作る」だけなので併用してよい

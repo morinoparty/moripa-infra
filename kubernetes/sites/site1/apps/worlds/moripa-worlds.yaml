@@ -78,11 +78,8 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: moripa-worlds
-          # morinoparty/moripa-worlds の main(118169c)をダイジェストで固定。更新は新しい sha-<short> の
-          # ダイジェストに書き換えて push する(docker buildx imagetools inspect ghcr.io/morinoparty/moripa-worlds:sha-<short>)
-          # TODO: controller / proxy サブコマンドを含むイメージを publish したら gate.yaml と同じダイジェストに上げる
-          #   (118169c は旧 waker 版で、args の controller を知らない)
-          image: ghcr.io/morinoparty/moripa-worlds:sha-118169c@sha256:92d6398a68450be872634c6bf6b1e8cb714b7a4ac494ad85479fb48b38b2e2d3
+          # タグ・ダイジェストは kustomization.yaml の images で gate.yaml と同じ値に固定する
+          image: ghcr.io/morinoparty/moripa-worlds
           imagePullPolicy: IfNotPresent
           args: [controller]
           env:

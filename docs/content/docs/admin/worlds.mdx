@@ -238,8 +238,10 @@ kubectl -n worlds delete deploy,svc,cm -l app.kubernetes.io/managed-by=moripa-wo
 
 Gate の Service(NodePort `30565`)とハブの HAProxy はそのまま使えるので、ハブ側の作業は無い。
 
-1. **moripa-worlds** の `proxy` / `controller` を含むイメージを publish し、`gate.yaml` と `moripa-worlds.yaml` の
-   イメージを同じダイジェストに上げる(旧イメージは `controller` / `proxy` を知らないので起動しない)
+1. **moripa-worlds** の `proxy` / `controller` を含むイメージを publish し、`kustomization.yaml` の `images` の
+   タグ・ダイジェストを上げる(`gate.yaml` と `moripa-worlds.yaml` は両方ここで固定される)。
+   旧イメージ(118169c)は `controller` / `proxy` を知らないので、上げる前に push すると Gate もコントローラも
+   起動せず、どのワールドにも入れなくなる
 2. **infra を push**: `worlds` Application が Secret 2 つ・ロビー・新しい Gate・コントローラ・NetworkPolicy を同期する。
    Gate が入れ替わる間(数十秒)は接続できない
 3. **旧ワールドを消す**: 旧構成で作られた `w-<uuid>` は forwarding の秘密を持たず、自分で認証する設定のまま。
@@ -249,7 +251,8 @@ Gate の Service(NodePort `30565`)とハブの HAProxy はそのまま使える�
    ```
 4. 26.3 のクライアントで `<uuid>.world.site1.dev.morino.party` に入り、ロビー → ワールドへ移ることを確かめる
 
-Gate の設定(`gate-config`)は起動時に読むだけ。変えたら `gate.yaml` の `worlds.morino.party/gate-config-rev` を
+Gate の設定(`gate-config`)は起動時に読むだけ(`noAutoReload: true`。forwarding の秘密は起動時にメモリ上で
+差し込むので、ファイルの読み直しをさせると秘密の無い設定が当たる)。変えたら `gate.yaml` の `worlds.morino.party/gate-config-rev` を
 上げて push する(Pod が作り直される)。
 
 ## 確認とトラブルシューティング

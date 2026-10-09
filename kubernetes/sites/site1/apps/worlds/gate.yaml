@@ -18,6 +18,10 @@ data:
   # 書式は Gate v0.74.32 の pkg/edition/java/config。forwarding.velocitySecret はここに書かない
   # (proxy が環境変数 FORWARDING_SECRET から起動前に差し込む。無ければ起動しない)
   config.yml: |
+    # ファイルの書き換えを監視して読み直す機能を切る(Gate v0.74.32 は既定で有効)。velocitySecret は
+    # 起動時にメモリ上で差し込むだけなので、ConfigMap の更新で読み直すと秘密の無い設定が当たってしまう。
+    # proxy 側も gate.Start に WithAutoConfigReload を渡さない
+    noAutoReload: true
     config:
       bind: 0.0.0.0:25565
       # 認証は Gate が行う(ワールド・ロビーは forwarding の秘密を持つ接続しか受けず、自分では認証しない)
@@ -67,8 +71,8 @@ spec:
       labels:
         app.kubernetes.io/name: gate
       annotations:
-        # gate-config は起動時に読むだけ。変えたらこの値を上げて Pod を作り直す
-        worlds.morino.party/gate-config-rev: "2"
+        # gate-config は起動時に読むだけ(noAutoReload)。変えたらこの値を上げて Pod を作り直す
+        worlds.morino.party/gate-config-rev: "3"
     spec:
       enableServiceLinks: false
       # Kubernetes API は使わない(コントローラとは HTTP API だけで話す)
@@ -92,12 +96,15 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: gate
-          # TODO: moripa-worlds の proxy サブコマンドを含むイメージを publish したら
-          #   ghcr.io/morinoparty/moripa-worlds:sha-<short>@sha256:… で固定する(moripa-worlds.yaml と同じイメージ)
-          image: ghcr.io/morinoparty/moripa-worlds:main
-          imagePullPolicy: Always
-          args: [proxy, --config, /etc/gate/config.yml]
+          # タグ・ダイジェストは kustomization.yaml の images で moripa-worlds.yaml と同じ値に固定する
+          # (proxy と controller の API がずれないよう、1 か所でまとめて上げる)
+          image: ghcr.io/morinoparty/moripa-worlds
+          imagePullPolicy: IfNotPresent
+          args: [proxy]
           env:
+            # Gate の設定ファイル(gate-config)。secret は proxy が FORWARDING_SECRET から差し込む
+            - name: GATE_CONFIG
+              value: /etc/gate/config.yml
             # Velocity modern forwarding の秘密(ワールド・ロビーの IANUA_VELOCITY_SECRET と同じ値)
             - name: FORWARDING_SECRET
               valueFrom:
@@ -105,7 +112,7 @@ spec:
                   name: worlds-forwarding
                   key: secret
             # コントローラの API(/v1/worlds/...)
-            - name: CONTROLLER_URL
+            - name: API_URL
               value: http://moripa-worlds.worlds.svc.cluster.local:8080
             - name: API_TOKEN
               valueFrom:

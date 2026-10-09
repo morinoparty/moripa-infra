@@ -11,5 +11,15 @@ resources:
 #                       登録する(バケット moripa-utils の schematics/ だけ)
 #   worlds-forwarding : Gate → ワールド / ロビーの Velocity modern forwarding の秘密
 #   moripa-worlds-api : Gate → コントローラの API の Bearer トークン
+# moripa-worlds のイメージ(gate.yaml の proxy と moripa-worlds.yaml の controller)はここだけで固定する。
+# 両方が同じビルドを使い、proxy ↔ controller の API がずれない。更新は新しい sha-<short> のダイジェストを
+# docker buildx imagetools inspect ghcr.io/morinoparty/moripa-worlds:sha-<short> で調べて書き換える。
+# 【マージ前に必ず上げる】下の 118169c は旧 waker 版で、proxy / controller サブコマンドも /v1 API も無い。
+# このまま同期すると gate も moripa-worlds も CrashLoop し、どのワールドにも入れなくなる。
+# proxy / controller を含むイメージを publish してダイジェストを書き換えるまで、このブランチを push しない
+images:
+  - name: ghcr.io/morinoparty/moripa-worlds
+    newTag: sha-118169c
+    digest: sha256:92d6398a68450be872634c6bf6b1e8cb714b7a4ac494ad85479fb48b38b2e2d3
 generators:
   - secret-generator.yaml

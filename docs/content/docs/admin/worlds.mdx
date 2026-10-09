@@ -5,7 +5,7 @@ description: MoripaUtils で上げた schematic を <uuidv7>.world.site1.dev.mor
 
 プレイヤーが MoripaUtils で上げた schematic(Sponge v3)を、そのまま 1 つのワールドとして遊べるようにする。
 Minecraft のサーバー追加に **`<uuidv7>.world.site1.dev.morino.party`** を入れるだけで、
-最初の接続(サーバーリストの ping でもよい)でワールドが起動し、誰もいなくなれば止まる。
+最初のログインでワールドが起動し、誰もいなくなれば止まる。サーバーリストの ping は状態(停止中 / 起動中)を表示するだけで、ワールドは作らない(認証の要らない ping で枠を埋められないようにするため)。
 
 `kubernetes/sites/site1/apps/worlds/` を ArgoCD の `worlds` Application(`apps` の配下、sync-wave 2)が同期する。
 RustFS 本体・バケット・IAM ユーザーは `rustfs`、PV / PVC `schematics` と namespace `worlds` は `csi-s3` の
@@ -67,11 +67,13 @@ flowchart LR
 
 | きっかけ | 動き |
 |---|---|
-| サーバーリストの ping / ログイン(ワールドが無い) | waker が `schematics/<uuid>/info.json` を読み(正 30 秒 / 負 10 秒キャッシュ)、あれば `w-<uuid>` を作る。ping には「`<title>` を起動しています…」、ログインには「10〜30 秒後に再接続してください」を返す |
+| サーバーリストの ping(ワールドが無い) | waker が `schematics/<uuid>/info.json` を読み(正 30 秒 / 負 10 秒キャッシュ)、停止中か起動中かを MOTD で返す。**ワールドは作らない** |
+| ログイン(ワールドが無い) | waker が `info.json` を確かめ、あれば `w-<uuid>` を作って「10〜30 秒後に再接続してください」で切断する |
 | 同時起動数が `MAX_WORLDS`(6)に達している | 「現在混み合っています」を返して作らない |
 | ID が不正 / `info.json` が無い / `delete_at` を過ぎた | 「ワールドが見つかりません」 |
 | 起動して Ready になった | 以後の接続は Gate → `w-<uuid>` に直接届く(waker は通らない) |
-| `STARTUP_TIMEOUT`(3 分)経っても Ready にならない | reaper が `w-<uuid>` を消す |
+| `STARTUP_TIMEOUT`(5 分)経っても Ready にならない | reaper が `w-<uuid>` を消す(イメージの pull と schematic 待ちの init コンテナ最大 120 秒を含めて収まる長さ) |
+| 起動後、一度も参加されないまま `UNJOINED_TIMEOUT`(3 分)経った | reaper が消す(reason `unjoined`)。一度でも人が入ると annotation `worlds.morino.party/played=true` が付き、以後は `IDLE_TIMEOUT` で判定する |
 | 無人(status ping の `players.online` が 0)が `IDLE_TIMEOUT`(10 分)続いた | reaper が消す。最後に人がいた時刻は Deployment の annotation `worlds.morino.party/last-active` に残すので、moripa-worlds が再起動しても数え直さない |
 | `info.json` が消えた / `delete_at` を過ぎた | reaper が消す |
 | `delete_at` を過ぎた schematic | sweeper(`SWEEP_INTERVAL` = 1 時間ごと)が RustFS の `schematics/<uuid>/` を丸ごと消す(MoripaUtils 自身は消さない) |
@@ -186,6 +188,6 @@ ssh gw.wg.morino.party 'echo "show servers state minecraft__world_site1_dev_mori
 | サーバーリストで「接続できません」(MOTD も出ない) | ハブの HAProxy(`make gateway` 済みか、backend `minecraft__world_site1_dev_morino_party` が UP か)→ `gate` の Pod / NodePort |
 | 「ワールドが見つかりません」 | ID の形(小文字の UUIDv7)、RustFS に `schematics/<uuid>/info.json` があるか、`delete_at` |
 | 「起動しています」のまま進まない | `w-<uuid>` の Pod。init コンテナが schematic を待っている(PVC `schematics` / csi-s3)、イメージが pull できない(ghcr が private)、メモリ不足 |
-| 「現在混み合っています」 | `MAX_WORLDS` に達している。無人のワールドは `IDLE_TIMEOUT` で消える |
+| 「現在混み合っています」 | `MAX_WORLDS` に達しているか、作成のレート制限(10 件 / 分)。参加されないワールドは `UNJOINED_TIMEOUT`、無人のワールドは `IDLE_TIMEOUT` で消える |
 | 入れたのにすぐ切れる / 認証エラー | ワールドから `sessionserver.mojang.com` へ出られるか(NetworkPolicy `world`、DNS) |
 | 別のワールドの MOTD が出る | Gate の `cachePingTTL` が `-1s` になっているか |

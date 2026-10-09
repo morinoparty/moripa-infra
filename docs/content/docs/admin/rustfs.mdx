@@ -152,9 +152,12 @@ kubectl get pv schematics
 kubectl -n worlds get pvc schematics   # STATUS Bound
 
 # PVC をマウントしたデバッグ Pod で見えること(〜10 秒の遅れ)と、書けないことを確認
+# (namespace worlds は Pod Security restricted なので securityContext を省くと作成を拒否される)
 kubectl -n worlds run schem-debug --rm -it --restart=Never --image=busybox:1.37.0 --overrides='
-{"spec":{"securityContext":{"runAsUser":10001,"runAsGroup":10001},
+{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":10001,"runAsGroup":10001,
+  "seccompProfile":{"type":"RuntimeDefault"}},
  "containers":[{"name":"schem-debug","image":"busybox:1.37.0","stdin":true,"tty":true,
+  "securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}},
   "command":["sh"],"volumeMounts":[{"name":"s","mountPath":"/schematics","readOnly":true}]}],
  "volumes":[{"name":"s","persistentVolumeClaim":{"claimName":"schematics","readOnly":true}}]}}'
 #   / $ ls -l /schematics && md5sum /schematics/rustfs-test.bin && touch /schematics/x   # touch は失敗するはず

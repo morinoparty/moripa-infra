@@ -4,9 +4,22 @@
 # worlds の Application の CreateNamespace=true は「無ければ作る」だけで追跡ラベルを付けない
 # (所有しない)ので、併用しても衝突しない。
 # Prune=false: このファイルを消しても namespace ごと worlds のリソースが消えないように
+# Pod Security Admission は restricted を強制する。moripa-worlds はインターネットから届く handshake を
+# 読みつつ、この namespace の Deployment を作れる(Role に resourceNames は付けられない)ので、
+# 乗っ取られても privileged / hostPath / hostNetwork の Pod でノードへ抜けられないようにする。
+# gate・moripa-worlds・w-<uuid>(ianua-silvae と init の busybox)はどれも restricted を満たしている。
+# デバッグで kubectl run する Pod も runAsNonRoot・seccomp RuntimeDefault・drop ALL・
+# allowPrivilegeEscalation: false が要る(rustfs.mdx の例を参照)
 apiVersion: v1
 kind: Namespace
 metadata:
   name: worlds
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
   annotations:
     argocd.argoproj.io/sync-options: Prune=false

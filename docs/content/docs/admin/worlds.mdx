@@ -7,7 +7,9 @@ description: MoripaUtils で上げた schematic を <uuidv7>.world.site1.dev.mor
 Minecraft のサーバー追加に **`<uuidv7>.world.site1.dev.morino.party`** を入れるだけで、
 最初の接続(サーバーリストの ping でもよい)でワールドが起動し、誰もいなくなれば止まる。
 
-`kubernetes/sites/site1/apps/worlds/` を ArgoCD の `worlds` Application(`apps` の配下)が同期する。
+`kubernetes/sites/site1/apps/worlds/` を ArgoCD の `worlds` Application(`apps` の配下、sync-wave 2)が同期する。
+RustFS 本体・バケット・IAM ユーザーは `rustfs`、PV / PVC `schematics` と namespace `worlds` は `csi-s3` の
+Application(どちらも sync-wave 1)が先に用意する([RustFS](/docs/admin/rustfs))。
 
 | コンポーネント | 置き場所 | 役割 |
 |---|---|---|
@@ -16,7 +18,7 @@ Minecraft のサーバー追加に **`<uuidv7>.world.site1.dev.morino.party`** �
 | `moripa-worlds`(Deployment 1 台) | `worlds/moripa-worlds.yaml`(コードは github.com/morinoparty/moripa-worlds) | 起動係(waker)・片付け係(reaper)・期限切れ schematic の削除(sweeper)。`/metrics` は ServiceMonitor で Prometheus へ |
 | `w-<uuid>`(ConfigMap / Deployment / Service) | git には無い。moripa-worlds が作って消す | ワールド本体。[ianua-silvae](https://github.com/morinoparty/ianua-silvae)(Minestom)が schematic を貼って待ち受ける |
 | RustFS(S3)のバケット `moripa-utils` | `schematics/<uuid>/` | MoripaUtils が上げる本体(`info.json` の `file_name`)と `info.json` |
-| PVC `schematics` | (別途) | csi-s3(geesefs)で `moripa-utils/schematics` を読み取り専用でワールドの Pod に見せる |
+| PVC `schematics` | `infrastructure/csi-s3/schematics.yaml`(`csi-s3` Application) | csi-s3(geesefs)で `moripa-utils/schematics` を読み取り専用でワールドの Pod に見せる |
 | NetworkPolicy | `worlds/networkpolicy.yaml` | Gate の egress、ワールドの ingress / egress を絞る(後述) |
 
 ## 経路
@@ -80,6 +82,12 @@ flowchart LR
 
 ## セキュリティ
 
+- **namespace は Pod Security restricted**: moripa-worlds はインターネットから届く handshake と S3 の JSON を読み、
+  かつ namespace 内の Deployment を作れる(名前が動的なので Role を `resourceNames` で絞れない)。
+  乗っ取られても privileged / hostPath / hostNetwork の Pod でノードへ抜けられないよう、namespace `worlds`
+  (`infrastructure/csi-s3/namespace-worlds.yaml`)に `pod-security.kubernetes.io/enforce: restricted` を付けている。
+  デバッグで `kubectl run` するときも `runAsNonRoot`・seccomp `RuntimeDefault`・`drop: [ALL]`・
+  `allowPrivilegeEscalation: false` が要る(例は [RustFS の反映後の確認](/docs/admin/rustfs#反映後の確認))
 - **Gate の egress を柵で囲う**: Lite の route はホスト名の `*` をそのまま backend 名(`w-$1.worlds.svc…`)に
   埋め込み、`$1` には `.` も入る。細工したホスト名でクラスタ内の別の Service へ繋がせられるので、
   Gate の egress は worlds namespace の `:25565` と DNS だけに絞っている(`gate-egress`)
@@ -106,7 +114,7 @@ flowchart LR
 
 | Secret / キー | 中身 |
 |---|---|
-| `moripa-worlds-s3` / `AWS_ACCESS_KEY_ID`・`AWS_SECRET_ACCESS_KEY` | RustFS のユーザー(上記の権限だけ)。RustFS 側にも同じ値で登録する |
+| `moripa-worlds-s3` / `AWS_ACCESS_KEY_ID`・`AWS_SECRET_ACCESS_KEY` | RustFS のユーザー `worlds`(上記の権限だけ)。`AWS_SECRET_ACCESS_KEY` は `infrastructure/rustfs/secrets.sops.yaml` の `WORLDS_SK` と同じ値にする(RustFS への登録は `rustfs-provision` Job が行う) |
 
 ```sh
 SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey sops kubernetes/sites/site1/apps/worlds/secrets.sops.yaml
@@ -121,11 +129,22 @@ SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey sops kubernetes/sites/site1/apps/world
    `moripa-worlds.yaml` の `WORLD_IMAGE` をタグ + ダイジェストで固定する
 2. **moripa-worlds**: 同じく `ghcr.io/morinoparty/moripa-worlds` を publish して public にする
    (最初は `:main`。落ち着いたらダイジェストで固定)
-3. RustFS にユーザー(`secrets.sops.yaml` と同じキー)と権限を入れ、PVC `schematics`(csi-s3)を用意する
-4. **infra を push**: ArgoCD が `worlds` を同期する(Gate・moripa-worlds・NetworkPolicy)
+3. **infra を push**: ArgoCD がまず sync-wave 1 の `rustfs`(RustFS 本体。PostSync の Job `rustfs-provision` が
+   バケット `moripa-utils` と IAM ユーザー `moripa-utils`・`worlds`・`csi-s3` / ポリシーを入れる)と
+   `csi-s3`(ドライバ・namespace `worlds`・PV / PVC `schematics`)を、続いて wave 2 の `apps` 配下の `worlds`
+   (Gate・moripa-worlds・NetworkPolicy)を同期する。RustFS のユーザーや PVC を手で作る必要は無い
+   (`worlds` ユーザーの鍵は `infrastructure/rustfs/secrets.sops.yaml` の `WORLDS_SK` と、この `secrets.sops.yaml` の
+   `moripa-worlds-s3` で同じ値にしておく)
+4. **同期の確認**: 次が揃ってから 5 へ進む(詳しくは [RustFS の反映後の確認](/docs/admin/rustfs#反映後の確認))
+   ```bash
+   kubectl -n rustfs get deploy,pod,pvc        # RustFS が Ready
+   kubectl -n rustfs get job                   # rustfs-provision は成功すると消える。残っていれば失敗(logs を見る)
+   kubectl -n worlds get pvc schematics        # STATUS Bound
+   kubectl -n worlds get deploy gate moripa-worlds   # どちらも Ready
+   ```
 5. **ハブの HAProxy**: `make gateway`(`tcp_proxy` ロールが `haproxy.cfg` を書き換えて reload する。
    reload は既存の接続を切らない)。Firewall・Terraform・DNS の変更は不要
-   (`25565` は既に公開済み、DNS は既存のワイルドカード)。4 より先に流すと、Gate が居ない間は
+   (`25565` は既に公開済み、DNS は既存のワイルドカード)。3 より先に流すと、Gate が居ない間は
    ヘルスチェックが DOWN になり `.world…` 宛ての接続が切られるだけ(他のサーバーには影響しない)
 
 Gate の設定(`gate-config`)は自動再読込を切っている(`--no-auto-reload`)。変えたら `gate.yaml` の

@@ -1,12 +1,12 @@
-# ワールドの入口: Minekube Gate(Lite モード、L4 に近い薄いプロキシ)。
+# ワールドの入口: moripa-worlds の proxy サブコマンド(Minekube Gate v0.74.32 をライブラリとして組み込み、
+# classic モードで動かす。github.com/morinoparty/moripa-worlds)。
 # ハブの HAProxy が "<uuidv7>.world.site1.dev.morino.party" を含む handshake を PROXY protocol v2 付きで
-# 全ノードの NodePort 30565 へ送り(network.yml の minecraft_hosts_public)、Gate がホスト名から
-# <uuid> を取り出して次の順に接続を試す(接続ごと・DNS も毎回引き直す):
-#   1. w-<uuid>.worlds.svc.cluster.local:25565      … 起動済みのワールド(ianua-silvae)
-#   2. moripa-worlds.worlds.svc.cluster.local:25565 … 起動係(waker)。ワールドを作って
-#                                                    「起動しています」と返す
-# 1 は Service が無ければ NXDOMAIN、Pod が Ready でなければ Cilium が reject するので、すぐ 2 へ落ちる。
-# 設定の書式は Gate v0.74.32 の pkg/edition/java/config・lite/config に合わせてある
+# 全ノードの NodePort 30565 へ送り(network.yml の minecraft_hosts_public)、Gate が:
+#   1. Mojang の認証(onlineMode)と 26.3(protocol 777)の確認をする
+#   2. moripa-worlds(コントローラ)の HTTP API にワールドの状態を聞き、Ready なら w-<uuid> へ直接、
+#      まだなら起動を頼んで待合ロビー(lobby.yaml)へ入れ、Ready になったら w-<uuid> へ移す
+# ワールド・ロビーへは Velocity modern forwarding で繋ぐ(秘密は Secret worlds-forwarding)。
+# Gate 自体は Kubernetes の権限も S3 のキーも持たない(コントローラとは API だけで話す)
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -15,39 +15,40 @@ metadata:
   labels:
     app.kubernetes.io/name: gate
 data:
+  # 書式は Gate v0.74.32 の pkg/edition/java/config。forwarding.velocitySecret はここに書かない
+  # (proxy が環境変数 FORWARDING_SECRET から起動前に差し込む。無ければ起動しない)
   config.yml: |
     config:
       bind: 0.0.0.0:25565
+      # 認証は Gate が行う(ワールド・ロビーは forwarding の秘密を持つ接続しか受けず、自分では認証しない)
+      onlineMode: true
       # ハブの HAProxy が付ける PROXY protocol v2 を読む(Gate のログ・接続数制限が実 IP になる)。
       # 信頼する送信元は既定(127/8・10/8・172.16/12・192.168/16 等の private)のまま。
       # NodePort 経由だと送信元はハブの wg アドレスか、Cilium が SNAT したノードのアドレスに
       # なり、どちらも 10/8。ヘッダは「信頼する送信元なら任意」で、無しの接続も通る
       # (拠点 LAN から NodePort を直接叩いても、HAProxy 経由と同じことしかできない)
       proxyProtocol: true
-      # ワールドへの接続待ち。NXDOMAIN / reject は即座に返るので、これはワールドが詰まったとき用
-      connectionTimeout: 5s
-      readTimeout: 30s
+      forwarding:
+        mode: velocity
+      # ロビーだけを静的に置く。w-<uuid> は proxy がワールドの Ready を確かめてから登録する
+      servers:
+        lobby: lobby.worlds.svc.cluster.local:25565
+      # 初期サーバーは proxy の PlayerChooseInitialServerEvent が決める(try で勝手に繋がない)
+      try: []
+      # 全員が同じ Gate を共有し、w-<uuid> も同じ一覧に登録されるので、/server で他人のワールドへ
+      # 移れないよう組み込みコマンドは切る
+      builtinCommands: false
+      announceProxyCommands: false
+      # v0.74.32 の classic モードは connectionTimeout / readTimeout を二重に time.Millisecond 倍する
+      # 不具合があり実質効かない。proxy は接続ごとに自前の期限(context)を付けるので値は既定のまま
       lite:
-        enabled: true
-        routes:
-          # ホスト名は小文字化してから照合され、* の部分が $1 になる。$1 には "." も入り得る
-          # (a.b.world.… → w-a.b.worlds.svc…)ので、Gate の egress は NetworkPolicy で
-          # worlds namespace の :25565 と DNS だけに絞ってある(networkpolicy.yaml)
-          - host: "*.world.site1.dev.morino.party"
-            backend:
-              - "w-$1.worlds.svc.cluster.local:25565"
-              - "moripa-worlds.worlds.svc.cluster.local:25565"
-            # 上から順に試す(1 がダメなら 2)
-            strategy: sequential
-            # ping 応答のキャッシュは無効にする。Gate はキャッシュの鍵を「backend のアドレス +
-            # プロトコル」にしていてホスト名を含まないため、3s 等にすると waker の応答が
-            # 別のワールドの ping に使い回され(MOTD が別ワールドのものになる)、その ping は
-            # waker に届かずワールドも起動しない(v0.74.32 で実測)
-            cachePingTTL: -1s
-            # handshake のホスト名は書き換えない(waker がそこから <uuid> を読む)
-            modifyVirtualHost: false
-            # Gate → ワールド / waker は素の接続(PROXY ヘッダ無し)
-            proxyProtocol: false
+        enabled: false
+      via:
+        enabled: false
+      # サーバーリストの MOTD は proxy の PingEvent がワールドごとに書き換える
+      status:
+        motd: "§7morino.party worlds"
+        showMaxPlayers: 200
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -66,11 +67,11 @@ spec:
       labels:
         app.kubernetes.io/name: gate
       annotations:
-        # 設定ファイルの自動再読込は切っている(--no-auto-reload)。gate-config を変えたら
-        # この値を上げて Pod を作り直す
-        worlds.morino.party/gate-config-rev: "1"
+        # gate-config は起動時に読むだけ。変えたらこの値を上げて Pod を作り直す
+        worlds.morino.party/gate-config-rev: "2"
     spec:
       enableServiceLinks: false
+      # Kubernetes API は使わない(コントローラとは HTTP API だけで話す)
       automountServiceAccountToken: false
       # 2 台を別ノードへ(1 台落ちても HAProxy → NodePort → 残りの Gate で受けられる)
       topologySpreadConstraints:
@@ -87,31 +88,66 @@ spec:
         runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
+      # 待合中のプレイヤーは Pod が消えると切断される。ロビー・ワールドにいるプレイヤーも同じ
       terminationGracePeriodSeconds: 30
       containers:
         - name: gate
-          # v0.74.32(マルチアーキの index のダイジェスト)
-          image: ghcr.io/minekube/gate:v0.74.32@sha256:6addd8769d93811b25b7d6620bfcac4862f1f20ac00bb2f1d2099974069bcbdf
-          args: [--config, /etc/gate/config.yml, --no-auto-reload]
+          # TODO: moripa-worlds の proxy サブコマンドを含むイメージを publish したら
+          #   ghcr.io/morinoparty/moripa-worlds:sha-<short>@sha256:… で固定する(moripa-worlds.yaml と同じイメージ)
+          image: ghcr.io/morinoparty/moripa-worlds:main
+          imagePullPolicy: Always
+          args: [proxy, --config, /etc/gate/config.yml]
           env:
+            # Velocity modern forwarding の秘密(ワールド・ロビーの IANUA_VELOCITY_SECRET と同じ値)
+            - name: FORWARDING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: worlds-forwarding
+                  key: secret
+            # コントローラの API(/v1/worlds/...)
+            - name: CONTROLLER_URL
+              value: http://moripa-worlds.worlds.svc.cluster.local:8080
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: moripa-worlds-api
+                  key: token
+            # このサフィックスの前の部分がワールド ID(UUIDv7、小文字)
+            - name: WORLD_HOST_SUFFIX
+              value: ".world.site1.dev.morino.party"
+            # ワールド・ロビー(ianua-silvae)が話せるのは Minecraft 26.3 だけ
+            - name: REQUIRED_PROTOCOL
+              value: "777"
+            - name: REQUIRED_VERSION_NAME
+              value: "26.3"
+            # 待合の上限。コントローラの STARTUP_TIMEOUT と揃える
+            - name: STARTUP_WAIT
+              value: 5m
+            - name: LISTEN_HTTP
+              value: ":8080"
+            - name: LOG_LEVEL
+              value: info
             - name: GOMEMLIMIT
-              value: 200MiB
+              value: 400MiB
           ports:
             - name: minecraft
               containerPort: 25565
+            - name: http
+              containerPort: 8080
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          # gRPC の healthService は設定項目だけで実装が無い(v0.74.32)ので TCP で見る
+          # /healthz は HTTP サーバーが立てば返るので、Minecraft のポートが開くまでは tcpSocket で見る
           readinessProbe:
             tcpSocket:
               port: minecraft
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: minecraft
+            httpGet:
+              path: /healthz
+              port: http
             initialDelaySeconds: 10
             periodSeconds: 20
             failureThreshold: 3
@@ -119,20 +155,20 @@ spec:
             requests:
               cpu: 50m
               memory: 64Mi
+            # classic モードはプレイヤーごとに暗号化・圧縮を行うので Lite より使う
             limits:
-              memory: 256Mi
+              memory: 512Mi
           volumeMounts:
             - name: config
               mountPath: /etc/gate
               readOnly: true
-            # イメージの XDG_CACHE_HOME(VOLUME 宣言あり)。ルート FS は読み取り専用
-            - name: cache
-              mountPath: /var/cache/gate
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
             name: gate-config
-        - name: cache
+        - name: tmp
           emptyDir:
             sizeLimit: 64Mi
 ---

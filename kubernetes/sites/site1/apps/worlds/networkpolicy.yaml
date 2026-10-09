@@ -1,15 +1,17 @@
 # worlds namespace の NetworkPolicy(Cilium が標準の networking.k8s.io/v1 をそのまま強制する)。
+# Cilium は Service の ClusterIP を backend の Pod に変換してから判定するので、ポートは Pod 側で書く。
+# kubelet の probe(ホストから)は Cilium の既定(allow-localhost=auto)で policy に関係なく通る。
 #
-#   gate          : egress を worlds namespace の :25565 と DNS だけに絞る。Lite の route は
-#                   ホスト名の * を $1 として backend 名に埋め込み、$1 には "." も入り得るので、
-#                   細工したホスト名で cluster.local の別の Service へ繋がせることができる。
-#                   その行き先を worlds の Minecraft ポートに限る(ingress は NodePort の外部接続を
-#                   受けるので絞らない)
+#   gate          : egress を DNS・コントローラの API(:8080)・ワールドとロビーの :25565・
+#                   インターネットの 443(Mojang の session server。onlineMode の認証は Gate が行う)に絞る。
+#                   ingress は NodePort の外部接続を受けるので絞らない
 #   ワールド(w-*) : ingress は gate と moripa-worlds(状態確認の ping)からの :25565 だけ。
-#                   egress は DNS とインターネット(online-mode の認証で Mojang の session server へ
-#                   繋ぐ)だけで、クラスタ内・拠点内のアドレスへは出さない(中身は利用者が上げた
-#                   schematic なので、念のため横に動けないようにしておく)
-#   moripa-worlds : 絞らない(k8s API・RustFS・ワールドへの ping・Prometheus からの scrape がある)
+#                   egress は DNS とインターネットだけで、クラスタ内・拠点内のアドレスへは出さない
+#                   (中身は利用者が上げた schematic なので、念のため横に動けないようにしておく)。
+#                   認証は Gate が済ませるので Mojang へ出る必要はもう無いが、塞ぐ理由も無いので残す
+#   lobby         : ingress はワールドと同じ。egress は絞らない(ArgoCD 管理の固定の中身)
+#   moripa-worlds : ingress は gate からの API と namespace monitoring(Prometheus の scrape)からの :8080 だけ。
+#                   egress は絞らない(k8s API・RustFS・ワールドへの ping)
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -21,13 +23,24 @@ spec:
       app.kubernetes.io/name: gate
   policyTypes: [Egress]
   egress:
-    # worlds namespace の全 Pod(w-<uuid> と moripa-worlds)の Minecraft ポート。
-    # Cilium は Service の ClusterIP を backend Pod に変換してから判定するので Pod 単位で書ける
+    # ワールド(w-<uuid>)とロビーの Minecraft ポート
     - to:
-        - podSelector: {}
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [world, lobby]
       ports:
         - protocol: TCP
           port: 25565
+    # コントローラの API
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: moripa-worlds
+      ports:
+        - protocol: TCP
+          port: 8080
     - to:
         - namespaceSelector:
             matchLabels:
@@ -40,6 +53,19 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    # Mojang の session server(sessionserver.mojang.com)。except は world の egress と同じ
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -50,7 +76,6 @@ spec:
     matchLabels:
       app.kubernetes.io/component: world
   policyTypes: [Ingress, Egress]
-  # kubelet の tcpSocket probe(ホストから)は Cilium の既定(allow-localhost=auto)で policy に関係なく通る。
   # allow-localhost を policy に変えるなら host からの :25565 を足すこと(でないと Ready にならず reaper に消される)
   ingress:
     - from:
@@ -90,3 +115,50 @@ spec:
               - 192.168.0.0/16
               - 100.64.0.0/10
               - 169.254.0.0/16
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lobby
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: lobby
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [gate, moripa-worlds]
+      ports:
+        - protocol: TCP
+          port: 25565
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: moripa-worlds
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: moripa-worlds
+  policyTypes: [Ingress]
+  ingress:
+    # Gate からの /v1/*(Bearer トークンでも守っているが、届く相手も絞る)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gate
+      ports:
+        - protocol: TCP
+          port: 8080
+    # namespace monitoring(kube-prometheus-stack の Prometheus が ServiceMonitor moripa-worlds で scrape する)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080

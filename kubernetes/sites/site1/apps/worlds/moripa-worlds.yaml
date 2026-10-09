@@ -1,7 +1,8 @@
-# moripa-worlds(github.com/morinoparty/moripa-worlds): ワールドの起動係 兼 掃除係。
-#   - waker   : Gate が w-<uuid> に繋げなかった接続を :25565 で受け、RustFS の
-#               schematics/<uuid>/info.json を見てワールド(ConfigMap / Deployment / Service w-<uuid>)を作る。
-#               サーバーリストの ping でも起動する
+# moripa-worlds(github.com/morinoparty/moripa-worlds)の controller サブコマンド: ワールドの起動係 兼 掃除係。
+#   - API     : Gate(proxy サブコマンド、gate.yaml)だけが叩く HTTP API(:8080 の /v1/worlds/<uuid>)。
+#               RustFS の schematics/<uuid>/info.json を見て状態を返し、ensure でワールド
+#               (ConfigMap / Deployment / Service w-<uuid>)を作る。Bearer トークン(Secret moripa-worlds-api)必須。
+#               同時起動数(MAX_WORLDS)と作成のレート制限はここだけが持つ
 #   - reaper  : 起動しないもの(STARTUP_TIMEOUT)、無人が IDLE_TIMEOUT 続いたもの、info.json が消えた /
 #               delete_at を過ぎたものを消す
 #   - sweeper : delete_at を過ぎた schematic を RustFS から消す(MoripaUtils 自身は消さない)
@@ -79,8 +80,11 @@ spec:
         - name: moripa-worlds
           # morinoparty/moripa-worlds の main(118169c)をダイジェストで固定。更新は新しい sha-<short> の
           # ダイジェストに書き換えて push する(docker buildx imagetools inspect ghcr.io/morinoparty/moripa-worlds:sha-<short>)
+          # TODO: controller / proxy サブコマンドを含むイメージを publish したら gate.yaml と同じダイジェストに上げる
+          #   (118169c は旧 waker 版で、args の controller を知らない)
           image: ghcr.io/morinoparty/moripa-worlds:sha-118169c@sha256:92d6398a68450be872634c6bf6b1e8cb714b7a4ac494ad85479fb48b38b2e2d3
           imagePullPolicy: IfNotPresent
+          args: [controller]
           env:
             - name: NAMESPACE
               valueFrom:
@@ -89,10 +93,18 @@ spec:
             # このサフィックスの前の部分がワールド ID(UUIDv7、小文字)
             - name: WORLD_HOST_SUFFIX
               value: ".world.site1.dev.morino.party"
-            - name: LISTEN_MINECRAFT
-              value: ":25565"
             - name: LISTEN_HTTP
               value: ":8080"
+            # /v1/* の Bearer トークン(gate.yaml の API_TOKEN と同じ Secret)
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: moripa-worlds-api
+                  key: token
+            # ワールドの Pod に IANUA_VELOCITY_SECRET として渡す Secret(キー secret)。
+            # ワールドは Gate からの forwarding 付きの接続しか受けず、自分では認証しない
+            - name: FORWARDING_SECRET_NAME
+              value: worlds-forwarding
             # RustFS(namespace rustfs、Service rustfs-svc の :9000 が S3)。
             # path-style 固定。キーは schematics/* の Get/Delete とバケットの List だけ
             - name: S3_ENDPOINT
@@ -126,12 +138,13 @@ spec:
               value: 384Mi
             - name: WORLD_MEMORY_LIMIT
               value: 768Mi
-            # 同時に動かすワールドの上限(w-* の Deployment の数)。超えたら「混み合っています」
+            # 同時に動かすワールドの上限(w-* の Deployment の数。lobby は数えない)。超えたら「混み合っています」
             - name: MAX_WORLDS
               value: "6"
             - name: IDLE_TIMEOUT
               value: 10m
-            # イメージの pull + schematic 待ちの init コンテナ(最大 120 秒)+ JVM 起動が収まる長さ
+            # イメージの pull + schematic 待ちの init コンテナ(最大 120 秒)+ JVM 起動が収まる長さ。
+            # Gate の STARTUP_WAIT(ロビーで待たせる上限)と揃える
             - name: STARTUP_TIMEOUT
               value: 5m
             # 起動後に一度も参加されないワールド(ログインして戻らなかった等)を早めに片付ける
@@ -144,8 +157,6 @@ spec:
             - name: LOG_LEVEL
               value: info
           ports:
-            - name: minecraft
-              containerPort: 25565
             - name: http
               containerPort: 8080
           securityContext:
@@ -172,7 +183,7 @@ spec:
             limits:
               memory: 256Mi
 ---
-# Gate の 2 番目の backend(moripa-worlds.worlds.svc.cluster.local:25565)と、Prometheus の /metrics
+# Gate からの API(/v1/*)と、Prometheus の /metrics
 apiVersion: v1
 kind: Service
 metadata:
@@ -183,10 +194,6 @@ spec:
   selector:
     app.kubernetes.io/name: moripa-worlds
   ports:
-    - name: minecraft
-      protocol: TCP
-      port: 25565
-      targetPort: minecraft
     - name: http
       protocol: TCP
       port: 8080

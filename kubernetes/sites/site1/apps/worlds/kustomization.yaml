@@ -3,10 +3,13 @@ kind: Kustomization
 namespace: worlds
 resources:
   - gate.yaml
+  - lobby.yaml
   - moripa-worlds.yaml
   - networkpolicy.yaml
-# moripa-worlds が RustFS(S3)を読むためのキー(Secret moripa-worlds-s3)は sops で暗号化した
-# secrets.sops.yaml を ksops が復号して投入する(ローカルの kubectl kustomize ではビルドできない)。
-# 同じキーを RustFS 側にもユーザーとして登録する(バケット moripa-utils の schematics/ だけ)
+# 秘密は sops で暗号化した secrets.sops.yaml を ksops が復号して投入する(ローカルの kubectl kustomize ではビルドできない):
+#   moripa-worlds-s3  : moripa-worlds が RustFS(S3)を読むためのキー。同じキーを RustFS 側にもユーザーとして
+#                       登録する(バケット moripa-utils の schematics/ だけ)
+#   worlds-forwarding : Gate → ワールド / ロビーの Velocity modern forwarding の秘密
+#   moripa-worlds-api : Gate → コントローラの API の Bearer トークン
 generators:
   - secret-generator.yaml

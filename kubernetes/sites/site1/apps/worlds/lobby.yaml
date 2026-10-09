@@ -1,0 +1,157 @@
+# 待合ロビー(lobby): Gate(moripa-worlds proxy)がワールドの起動を待つプレイヤーを置いておく常駐の
+# ianua-silvae。ワールドが Ready になると Gate がプレイヤーをそのまま w-<uuid> へ移す。
+# ArgoCD が管理する(moripa-worlds は作らない)。app.kubernetes.io/managed-by=moripa-worlds を付けると
+# reaper の対象になって消されるので付けない。component は lobby(NetworkPolicy の対象を world と分ける)
+---
+# config.json と足場の schematic。足場は scripts/make_lobby_schem.py で作る:
+#   python3 scripts/make_lobby_schem.py /tmp/lobby.schem && base64 -w0 /tmp/lobby.schem
+# 11x1x11 の床(y=64)を (0, 64, 0) に貼り、中央 (5.5, 65, 5.5) にスポーンさせる。奈落は床の 16 下(y=48)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lobby-config
+  labels:
+    app.kubernetes.io/name: lobby
+    app.kubernetes.io/component: lobby
+data:
+  # onlineMode / velocitySecret は環境変数 IANUA_VELOCITY_SECRET(Secret worlds-forwarding)で上書きされる。
+  # 秘密が入っている間は Gate からの Velocity modern forwarding の接続しか受けない(認証は Gate が済ませる)
+  config.json: |
+    {
+      "bind": "0.0.0.0",
+      "port": 25565,
+      "onlineMode": false,
+      "velocitySecret": null,
+      "schematicPath": "/lobby/lobby.schem",
+      "schematicOrigin": { "x": 0, "y": 64, "z": 0 },
+      "spawn": { "x": 5.5, "y": 65, "z": 5.5, "yaw": 0, "pitch": 0 },
+      "voidY": 32,
+      "voidDepth": 16,
+      "motd": { "description": "morino.party worlds | lobby", "maxPlayers": 200 }
+    }
+binaryData:
+  # yamllint disable-line rule:line-length
+  lobby.schem: H4sIAAAAAAACA3VPQQrCMBCcJNpii+BFH+NRFDwICoIeS6xbG2wTaPfig/2HaUQtqHNYhp3Z3dkESDDa5yXVmk2uEB+oaY2zAJRCutSs353JXWJ4NGcukUpEazKXkiE83ZC9dN0U0bYoWuJuHD0kiBaVy69tgninK2ImhVltLOWNLnjesrOUnRrjLQjDfbF2jssseLwmFKY9kXRWacvUdJklYgy60J7fpHhBincSEaj8UHzToPr61/BrQ+/aCOPw7cqyYUP+6ScedFpol24BAAA=
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lobby
+  labels:
+    app.kubernetes.io/name: lobby
+    app.kubernetes.io/component: lobby
+spec:
+  # 状態を持たない(ディスクに何も書かない)。落ちている間に来たプレイヤーは Gate が切断理由付きで返す
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lobby
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lobby
+        app.kubernetes.io/component: lobby
+      annotations:
+        # lobby-config は起動時に読むだけ。変えたらこの値を上げて Pod を作り直す
+        worlds.morino.party/lobby-config-rev: "1"
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        # ianua-silvae イメージの実行ユーザー(ワールドと同じ)
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: server
+          # ianua-silvae の main(Minecraft 26.3 / protocol 777)をダイジェストで固定
+          image: ghcr.io/morinoparty/ianua-silvae:main@sha256:9f505aa2dca72b8b85f8a3d91ffab34dc54e8fe877f4a37f0e649014fbe50bec
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: IANUA_VELOCITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: worlds-forwarding
+                  key: secret
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75 -XX:+UseSerialGC -XX:+PerfDisableSharedMem"
+          ports:
+            - name: minecraft
+              containerPort: 25565
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:
+            tcpSocket:
+              port: minecraft
+            periodSeconds: 2
+            failureThreshold: 90
+          readinessProbe:
+            tcpSocket:
+              port: minecraft
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: minecraft
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 768Mi
+          volumeMounts:
+            - name: config
+              mountPath: /server/config
+              readOnly: true
+            - name: schem
+              mountPath: /lobby
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: lobby-config
+            items:
+              - key: config.json
+                path: config.json
+        - name: schem
+          configMap:
+            name: lobby-config
+            items:
+              - key: lobby.schem
+                path: lobby.schem
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+# Gate の servers.lobby(lobby.worlds.svc.cluster.local:25565)
+apiVersion: v1
+kind: Service
+metadata:
+  name: lobby
+  labels:
+    app.kubernetes.io/name: lobby
+    app.kubernetes.io/component: lobby
+spec:
+  selector:
+    app.kubernetes.io/name: lobby
+  ports:
+    - name: minecraft
+      protocol: TCP
+      port: 25565
+      targetPort: minecraft

@@ -43,8 +43,15 @@ data:
       # 移れないよう組み込みコマンドは切る
       builtinCommands: false
       announceProxyCommands: false
-      # v0.74.32 の classic モードは connectionTimeout / readTimeout を二重に time.Millisecond 倍する
-      # 不具合があり実質効かない。proxy は接続ごとに自前の期限(context)を付けるので値は既定のまま
+      # v0.74.32 の classic モードは connectionTimeout / readTimeout を使う所でもう一度 time.Millisecond 倍する
+      # (configutil.Duration は既にナノ秒)。既定の 5s / 30s のままだと桁あふれして実質無期限になり、応答しない
+      # バックエンドへの接続や handshake だけ送って黙るクライアントが居座る。ナノ秒で書いて Gate が掛けた後に
+      # 5 秒 / 30 秒になるようにする(proxy は実効値が 1 秒〜10 分に収まらない設定では起動しない)
+      connectionTimeout: 5000ns
+      readTimeout: 30000ns
+      # BungeeCord の plugin message(Connect でサーバーを移る等)は使わない。Connect は上の値を倍せずに使い
+      # 5µs で必ず失敗するうえ、組み込みコマンドと同じく他人のワールドへ移る口になる(proxy も強制で切る)
+      bungeePluginChannelEnabled: false
       lite:
         enabled: false
       via:
@@ -72,7 +79,7 @@ spec:
         app.kubernetes.io/name: gate
       annotations:
         # gate-config は起動時に読むだけ(noAutoReload)。変えたらこの値を上げて Pod を作り直す
-        worlds.morino.party/gate-config-rev: "3"
+        worlds.morino.party/gate-config-rev: "4"
     spec:
       enableServiceLinks: false
       # Kubernetes API は使わない(コントローラとは HTTP API だけで話す)

@@ -79,8 +79,12 @@ flowchart LR
 - Gate は `servers` にロビーだけを静的に持ち、`w-<uuid>` は Ready を確かめてから実行時に登録する。
   組み込みコマンド(`/server` など)は切ってある(`builtinCommands: false`)。全員が同じ Gate を共有するので、
   残すと他人のワールドへ移れてしまう
-- **Gate v0.74.32 の既知の不具合**: classic モードの `connectionTimeout` / `readTimeout` が二重に
-  `time.Millisecond` 倍されて実質効かない。proxy は接続のたびに自前の期限を付けている(`gate-config` では設定しない)
+- **Gate v0.74.32 の既知の不具合**: classic モードの `connectionTimeout` / `readTimeout` が使う所でもう一度
+  `time.Millisecond` 倍される(既定の `5s` / `30s` は桁あふれして実質無期限)。`gate-config` では **ナノ秒で**
+  `connectionTimeout: 5000ns` / `readTimeout: 30000ns` と書き、Gate が倍した後に 5 秒 / 30 秒になるようにしている。
+  proxy は実効値が 1 秒〜10 分に収まらない設定(省略・`5s` と書いた等)では起動しない。値を倍さずに使う BungeeCord の
+  plugin message(`bungeePluginChannelEnabled`)は切り、同じ理由で必ず出る「backend server has not sent a single packet」の
+  誤報ログは proxy が落とす
 - ハブの HAProxy は handshake の hex を部分一致で見る(既存の `minecraft_hosts` と同じ仕組み)。
   ワールドのサフィックスは公開してよいので sops の対応表ではなく `network.yml` の
   `minecraft_hosts_public` に平文で置き、`tcp_routes` の `minecraft` で sops の表より先に連結している

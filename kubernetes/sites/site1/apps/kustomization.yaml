@@ -5,3 +5,4 @@ kind: Kustomization
 resources:
   - hermes-app.yaml
   - wings-app.yaml
+  - worlds-app.yaml

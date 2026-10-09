@@ -49,7 +49,10 @@ kube_api_port: 6443
 #                               Pod ではなくホスト上の docker が port を持つもの(Wings のゲームサーバー等)
 #   - site + minecraft_hosts  : 1 つの port で受け、Minecraft の handshake に入っている接続先
 #                               ホスト名(HTTPS の SNI 相当)でサーバーを選ぶ。どれにも一致しなければ切断。
-#                               DNS は *.minecraft.gw.morino.party(Cloudflare、ハブの公開 IP)
+#                               DNS は *.minecraft.gw.morino.party(Cloudflare、ハブの公開 IP)。
+#                               各要素は { host, server, port }(指定ノードの port)か
+#                               { host, node_port }(その拠点の全クラスタノードの NodePort)のどちらか。
+#                               send_proxy: true で PROXY protocol v2 を付ける(ヘルスチェックにも)
 # クライアント実IPは L4 では届かない(Minecraft なら前段の Velocity が
 # modern forwarding でプレイヤー IP を渡す前提)。
 # allowed_sources を指定すると nftables でその送信元だけに絞る(空なら全公開)。
@@ -59,12 +62,27 @@ tcp_routes:
   # Pelican Wings(site1-node2、docs/admin/wings)。SFTP とゲームサーバーの割り当てポート
   - { name: wings-sftp, port: 2022, site: site1, hosts: [site1-node2] }
   # Minecraft はすべて 25565 で受け、ホスト名で振り分ける。ホスト名 → サーバーの対応表は
-  # 公開しないので sops で暗号化した group_vars/gateway/minecraft.sops.yml(形式は .example)
+  # 公開しないので sops で暗号化した group_vars/gateway/minecraft.sops.yml(形式は .example)。
+  # 公開してよいもの(ワールドのサフィックス)は下の minecraft_hosts_public に平文で置き、先に照合する
   - name: minecraft
     port: 25565
     site: site1
-    minecraft_hosts: "{{ minecraft_hosts_site1 }}"
+    minecraft_hosts: "{{ minecraft_hosts_public + minecraft_hosts_site1 }}"
 #  - { name: minecraft, port: 25565, site: site1, node_port: 30565, allowed_sources: ["203.0.113.50/32"] }
+
+# tcp_routes の minecraft の、公開してよい振り分け先(sops の minecraft_hosts_site1 と連結し、こちらが先)。
+#   .world.site1.dev.morino.party: プレイヤーが上げた schematic のワールド(<uuidv7>.world.site1.dev.morino.party、
+#     docs/admin/worlds)。site1 の全ノードの NodePort 30565(Service worlds/gate)へ PROXY protocol v2 付きで送る。
+#     host は部分一致なので先頭の "." 込みでサフィックスだけを書く。DNS は既存の *.site1.dev.morino.party
+#     (ワイルドカードは複数ラベルにも一致する)がハブの公開 IP を返すので追加不要。
+#     30565 は ingress_filter_extra_ports(roles/k8s_prereq の nft、INPUT フック)には足さない:
+#       - NodePort は Cilium の kube-proxy 置き換え(eBPF、tc)がノードの INPUT より前に Pod へ転送するので、
+#         INPUT フックの nft ルールを足しても効かない(:80 や Wings のような host の socket とは違う)
+#       - Gate の proxyProtocol は「信頼する送信元(private)からならヘッダは任意」で、ヘッダ無しも通る。
+#         拠点 LAN から直接 :30565 に繋いでもハブ経由と同じワールドに同じ認証(online-mode)で入れる
+#         だけなので、塞ぐ利点が無い(送信元 IP を偽れるのは Gate のログ / 接続数制限に対してだけ)
+minecraft_hosts_public:
+  - { host: ".world.site1.dev.morino.party", node_port: 30565, send_proxy: true }
 
 # ハブを入口にする公開名(site1-node2.gw.morino.party 等)は Cloudflare の A / AAAA(ハブの公開 IP、
 # DNS only)だけで管理し、wg 内の dnsmasq では上書きしない(上流へ転送して同じ答えを返す)。

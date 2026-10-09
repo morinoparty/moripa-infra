@@ -1,0 +1,28 @@
+# プレイヤーが上げた schematic をワールドとして遊べるようにする仕組み(<uuidv7>.world.site1.dev.morino.party)。
+# 入口の Gate(Lite)、起動・停止を受け持つ moripa-worlds、ワールドごとの ianua-silvae
+# (moripa-worlds が動的に作る w-<uuid>)。HAProxy 側は network.yml の minecraft_hosts_public。
+# 全体像は docs/admin/worlds
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: worlds
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/morinoparty/moripa-infra.git
+    targetRevision: main
+    path: kubernetes/sites/site1/apps/worlds
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: worlds
+  syncPolicy:
+    automated:
+      selfHeal: true
+      # w-<uuid>(ConfigMap / Deployment / Service)は moripa-worlds が作るもので git には無いが、
+      # 追跡用の印(ArgoCD 3.x 既定の annotation argocd.argoproj.io/tracking-id、旧来の label
+      # app.kubernetes.io/instance)をどちらも付けないので、ArgoCD の管理対象にならず prune もされない
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

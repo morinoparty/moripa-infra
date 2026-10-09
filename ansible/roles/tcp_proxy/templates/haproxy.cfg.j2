@@ -2,7 +2,8 @@
 # 生成元: ansible/group_vars/all/network.yml の tcp_routes
 # 各 port を対象拠点の全ノードの NodePort(node_port)か、指定ホスト(hosts)の
 # target_port(省略時は同じ port)へ L4 で転送する(実IPは届かない)。
-# minecraft_hosts を持つ route は、handshake の接続先ホスト名でバックエンドを選ぶ。
+# minecraft_hosts を持つ route は、handshake の接続先ホスト名でバックエンドを選ぶ
+# (各ホストの転送先は指定ノードの port か、拠点の全ノードの NodePort。send_proxy なら PROXY v2 付き)。
 # 送信元の制限(allowed_sources)は nftables 側で行う
 
 global
@@ -40,13 +41,29 @@ frontend {{ r.name }}
     tcp-request content accept if { req.len gt 0 }
 {% for m in r.minecraft_hosts %}
     # {{ m.host }}
-    use_backend {{ r.name }}_{{ m.host | replace('.', '_') }} if { req.payload(0,0),hex -m sub {{ m.host.encode('utf-8').hex() | upper }} }
+    use_backend {{ r.name }}_{{ m.host | regex_replace('[^A-Za-z0-9-]', '_') }} if { req.payload(0,0),hex -m sub {{ m.host.encode('utf-8').hex() | upper }} }
 {% endfor %}
     default_backend {{ r.name }}_reject
 
 {% for m in r.minecraft_hosts %}
-backend {{ r.name }}_{{ m.host | replace('.', '_') }}
-    server {{ m.server }} {{ hostvars[m.server].wg_address }}:{{ m.port }} check inter 5s fall 2 rise 2
+{# server+port: 指定ノードの port / node_port: その拠点の全クラスタノードの NodePort #}
+{% if m.node_port is defined %}
+{% set targets = groups[r.site] | intersect(groups['k8s_cluster']) | sort %}
+{% set target_port = m.node_port %}
+{% else %}
+{% set targets = [m.server] %}
+{% set target_port = m.port %}
+{% endif %}
+{# send_proxy: PROXY protocol v2 を付ける。check-send-proxy でヘルスチェックの接続にも付ける
+   (受け側が PROXY ヘッダを前提にしていても check が失敗扱いにならないように) #}
+{% set proxy_opts = ' send-proxy-v2 check-send-proxy' if m.send_proxy | default(false) else '' %}
+backend {{ r.name }}_{{ m.host | regex_replace('[^A-Za-z0-9-]', '_') }}
+{% if targets | length > 1 %}
+    balance leastconn
+{% endif %}
+{% for h in targets %}
+    server {{ h }} {{ hostvars[h].wg_address }}:{{ target_port }}{{ proxy_opts }} check inter 5s fall 2 rise 2
+{% endfor %}
 
 {% endfor %}
 backend {{ r.name }}_reject

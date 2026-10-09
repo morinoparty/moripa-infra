@@ -1,0 +1,169 @@
+# ワールドの入口: Minekube Gate(Lite モード、L4 に近い薄いプロキシ)。
+# ハブの HAProxy が "<uuidv7>.world.site1.dev.morino.party" を含む handshake を PROXY protocol v2 付きで
+# 全ノードの NodePort 30565 へ送り(network.yml の minecraft_hosts_public)、Gate がホスト名から
+# <uuid> を取り出して次の順に接続を試す(接続ごと・DNS も毎回引き直す):
+#   1. w-<uuid>.worlds.svc.cluster.local:25565      … 起動済みのワールド(ianua-silvae)
+#   2. moripa-worlds.worlds.svc.cluster.local:25565 … 起動係(waker)。ワールドを作って
+#                                                    「起動しています」と返す
+# 1 は Service が無ければ NXDOMAIN、Pod が Ready でなければ Cilium が reject するので、すぐ 2 へ落ちる。
+# 設定の書式は Gate v0.74.32 の pkg/edition/java/config・lite/config に合わせてある
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gate-config
+  labels:
+    app.kubernetes.io/name: gate
+data:
+  config.yml: |
+    config:
+      bind: 0.0.0.0:25565
+      # ハブの HAProxy が付ける PROXY protocol v2 を読む(Gate のログ・接続数制限が実 IP になる)。
+      # 信頼する送信元は既定(127/8・10/8・172.16/12・192.168/16 等の private)のまま。
+      # NodePort 経由だと送信元はハブの wg アドレスか、Cilium が SNAT したノードのアドレスに
+      # なり、どちらも 10/8。ヘッダは「信頼する送信元なら任意」で、無しの接続も通る
+      # (拠点 LAN から NodePort を直接叩いても、HAProxy 経由と同じことしかできない)
+      proxyProtocol: true
+      # ワールドへの接続待ち。NXDOMAIN / reject は即座に返るので、これはワールドが詰まったとき用
+      connectionTimeout: 5s
+      readTimeout: 30s
+      lite:
+        enabled: true
+        routes:
+          # ホスト名は小文字化してから照合され、* の部分が $1 になる。$1 には "." も入り得る
+          # (a.b.world.… → w-a.b.worlds.svc…)ので、Gate の egress は NetworkPolicy で
+          # worlds namespace の :25565 と DNS だけに絞ってある(networkpolicy.yaml)
+          - host: "*.world.site1.dev.morino.party"
+            backend:
+              - "w-$1.worlds.svc.cluster.local:25565"
+              - "moripa-worlds.worlds.svc.cluster.local:25565"
+            # 上から順に試す(1 がダメなら 2)
+            strategy: sequential
+            # ping 応答のキャッシュは無効にする。Gate はキャッシュの鍵を「backend のアドレス +
+            # プロトコル」にしていてホスト名を含まないため、3s 等にすると waker の応答が
+            # 別のワールドの ping に使い回され(MOTD が別ワールドのものになる)、その ping は
+            # waker に届かずワールドも起動しない(v0.74.32 で実測)
+            cachePingTTL: -1s
+            # handshake のホスト名は書き換えない(waker がそこから <uuid> を読む)
+            modifyVirtualHost: false
+            # Gate → ワールド / waker は素の接続(PROXY ヘッダ無し)
+            proxyProtocol: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gate
+  labels:
+    app.kubernetes.io/name: gate
+spec:
+  replicas: 2
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gate
+      annotations:
+        # 設定ファイルの自動再読込は切っている(--no-auto-reload)。gate-config を変えたら
+        # この値を上げて Pod を作り直す
+        worlds.morino.party/gate-config-rev: "1"
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      # 2 台を別ノードへ(1 台落ちても HAProxy → NodePort → 残りの Gate で受けられる)
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: gate
+      securityContext:
+        # distroless の nonroot
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: gate
+          # v0.74.32(マルチアーキの index のダイジェスト)
+          image: ghcr.io/minekube/gate:v0.74.32@sha256:6addd8769d93811b25b7d6620bfcac4862f1f20ac00bb2f1d2099974069bcbdf
+          args: [--config, /etc/gate/config.yml, --no-auto-reload]
+          env:
+            - name: GOMEMLIMIT
+              value: 200MiB
+          ports:
+            - name: minecraft
+              containerPort: 25565
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # gRPC の healthService は設定項目だけで実装が無い(v0.74.32)ので TCP で見る
+          readinessProbe:
+            tcpSocket:
+              port: minecraft
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: minecraft
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/gate
+              readOnly: true
+            # イメージの XDG_CACHE_HOME(VOLUME 宣言あり)。ルート FS は読み取り専用
+            - name: cache
+              mountPath: /var/cache/gate
+      volumes:
+        - name: config
+          configMap:
+            name: gate-config
+        - name: cache
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gate
+  labels:
+    app.kubernetes.io/name: gate
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gate
+---
+# ハブの HAProxy(tcp_routes の minecraft → minecraft_hosts_public)が全クラスタノードの wg アドレス:30565 へ送る。
+# externalTrafficPolicy は Cluster(どのノードに着いても Gate へ届く。HAProxy が全ノードへ振るため)
+apiVersion: v1
+kind: Service
+metadata:
+  name: gate
+  labels:
+    app.kubernetes.io/name: gate
+spec:
+  type: NodePort
+  externalTrafficPolicy: Cluster
+  selector:
+    app.kubernetes.io/name: gate
+  ports:
+    - name: minecraft
+      protocol: TCP
+      port: 25565
+      targetPort: minecraft
+      nodePort: 30565

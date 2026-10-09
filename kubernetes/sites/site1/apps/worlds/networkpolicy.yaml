@@ -1,0 +1,92 @@
+# worlds namespace の NetworkPolicy(Cilium が標準の networking.k8s.io/v1 をそのまま強制する)。
+#
+#   gate          : egress を worlds namespace の :25565 と DNS だけに絞る。Lite の route は
+#                   ホスト名の * を $1 として backend 名に埋め込み、$1 には "." も入り得るので、
+#                   細工したホスト名で cluster.local の別の Service へ繋がせることができる。
+#                   その行き先を worlds の Minecraft ポートに限る(ingress は NodePort の外部接続を
+#                   受けるので絞らない)
+#   ワールド(w-*) : ingress は gate と moripa-worlds(状態確認の ping)からの :25565 だけ。
+#                   egress は DNS とインターネット(online-mode の認証で Mojang の session server へ
+#                   繋ぐ)だけで、クラスタ内・拠点内のアドレスへは出さない(中身は利用者が上げた
+#                   schematic なので、念のため横に動けないようにしておく)
+#   moripa-worlds : 絞らない(k8s API・RustFS・ワールドへの ping・Prometheus からの scrape がある)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gate-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gate
+  policyTypes: [Egress]
+  egress:
+    # worlds namespace の全 Pod(w-<uuid> と moripa-worlds)の Minecraft ポート。
+    # Cilium は Service の ClusterIP を backend Pod に変換してから判定するので Pod 単位で書ける
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 25565
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: world
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: world
+  policyTypes: [Ingress, Egress]
+  # kubelet の tcpSocket probe(ホストから)は Cilium の既定(allow-localhost=auto)で policy に関係なく通る。
+  # allow-localhost を policy に変えるなら host からの :25565 を足すこと(でないと Ready にならず reaper に消される)
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [gate, moripa-worlds]
+      ports:
+        - protocol: TCP
+          port: 25565
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # インターネット(ノード経由でハブから出る)。except は private / 特殊用途のアドレス全体で、
+    # network.yml の pod_cidr(10.244.0.0/16)・service_cidr(10.96.0.0/12)、拠点のクラスタ用サブネット
+    # (cluster_lan_cidr、10.200.<site>.0/24)、wg_cidr(10.100.0.0/24)を含む。拠点 LAN は DHCP で
+    # 範囲が決まっていない(ルーターや同じ LAN の機器)ので 10/8 だけでなく 172.16/12・192.168/16 も外す。
+    # Cilium の CIDR ルールはもともとクラスタ内の Pod・ノードの identity を選ばないので、
+    # except は念のための二重の柵
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16

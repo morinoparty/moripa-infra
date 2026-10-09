@@ -87,7 +87,7 @@ moripa-infra/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
 │       │   │   ├── storage/            # Longhorn の values + UI の Ingress(private ホスト名)
 │       │   │   └── monitoring/         # kube-prometheus-stack の values + UI の Ingress(private ホスト名)
-│       │   └── apps/               # 個別アプリの Application(hermes / wings)
+│       │   └── apps/               # 個別アプリの Application(hermes / wings / worlds)
 │       └── site2/              # site1 と同構造
 ├── scripts/                    # check_consistency.py / check_secrets.sh
 ├── docs/                       # fumadocs ドキュメントサイト(Workers へ自動デプロイ)

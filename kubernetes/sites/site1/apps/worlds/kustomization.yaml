@@ -14,9 +14,7 @@ resources:
 # moripa-worlds のイメージ(gate.yaml の proxy と moripa-worlds.yaml の controller)はここだけで固定する。
 # 両方が同じビルドを使い、proxy ↔ controller の API がずれない。更新は新しい sha-<short> のダイジェストを
 # docker buildx imagetools inspect ghcr.io/morinoparty/moripa-worlds:sha-<short> で調べて書き換える。
-# 【マージ前に必ず上げる】下の 118169c は旧 waker 版で、proxy / controller サブコマンドも /v1 API も無い。
-# このまま同期すると gate も moripa-worlds も CrashLoop し、どのワールドにも入れなくなる。
-# proxy / controller を含むイメージを publish してダイジェストを書き換えるまで、このブランチを push しない
+# proxy / controller サブコマンドを持つのは sha-5f86085 以降(それより前の waker 版に戻すと両方 CrashLoop する)
 images:
   - name: ghcr.io/morinoparty/moripa-worlds
     newTag: sha-5f86085

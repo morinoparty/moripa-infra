@@ -19,7 +19,7 @@ resources:
 # proxy / controller を含むイメージを publish してダイジェストを書き換えるまで、このブランチを push しない
 images:
   - name: ghcr.io/morinoparty/moripa-worlds
-    newTag: sha-118169c
-    digest: sha256:92d6398a68450be872634c6bf6b1e8cb714b7a4ac494ad85479fb48b38b2e2d3
+    newTag: sha-5f86085
+    digest: sha256:4357e4a346fb45394de35982b4f1184417c1dad9cf3a596d88d47772febbcbba
 generators:
   - secret-generator.yaml

@@ -86,7 +86,9 @@ moripa-infra/
 │       │   ├── infrastructure/
 │       │   │   ├── cilium/values.yaml  # k8sServiceHost = site1 の VIP
 │       │   │   ├── storage/            # Longhorn の values + UI の Ingress(private ホスト名)
-│       │   │   └── monitoring/         # kube-prometheus-stack の values + UI の Ingress(private ホスト名)
+│       │   │   ├── monitoring/         # kube-prometheus-stack の values + UI の Ingress(private ホスト名)
+│       │   │   ├── rustfs/             # RustFS(S3 互換ストレージ)の values + Ingress + IAM 投入 Job
+│       │   │   └── csi-s3/             # csi-s3(geesefs)+ schematic の読み取り専用 PV / PVC
 │       │   └── apps/               # 個別アプリの Application(hermes / wings / worlds)
 │       └── site2/              # site1 と同構造
 ├── scripts/                    # check_consistency.py / check_secrets.sh
@@ -124,6 +126,7 @@ ArgoCD は CNI のないクラスタでは動けないため、順序が重要:
 | ノードの LAN | DHCP のまま(ルーター設定不要) | ルーターは触れない前提。Ansible が第 2 サブネットの固定アドレス(`lan_address`)を LAN NIC に追加する |
 | クラスタ用サブネット | site1 `10.200.1.0/24` / site2 `10.200.2.0/24` | `cluster_lan_cidr`。node<N> は `.1N`、VIP `.10`。実際の LAN と被ったら変更 |
 | ストレージ | Longhorn(site1、3レプリカ、既定 StorageClass) | ルート LV を VG 全体に広げ、`/data/longhorn` をディスクにする(OS 側の余裕は Longhorn の storageReserved 30GiB) |
+| オブジェクトストレージ | RustFS(site1、standalone + Longhorn 50Gi) | S3 は `rustfs.site1.dev.morino.party`。schematic は csi-s3 で worlds へ読み取り専用マウント → [docs/content/docs/admin/rustfs.mdx](docs/content/docs/admin/rustfs.mdx) |
 | ノードの管理経路 | WireGuard(10.100.0.x) | inventory の ansible_host = wg アドレス。管理者の kubectl も wg アドレス経由(VIP は wg から届かない) |
 | WireGuard CIDR | 10.100.0.0/24 | site1 は .11–.12、site2 は .21–.22。LAN / Pod / Service と重複しないこと |
 | Pod / Service CIDR | 10.244.0.0/16 / 10.96.0.0/12 | **両拠点で同一値**(クラスタ同士を接続しない前提 → [docs/content/docs/architecture/multi-site.mdx](docs/content/docs/architecture/multi-site.mdx)) |

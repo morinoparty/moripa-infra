@@ -1,0 +1,12 @@
+# PVC schematics(schematics.yaml)を置く namespace worlds はこの Application(sync-wave 1)が先に作る。
+# worlds の Application(apps 配下、wave 2)が同期される前に PVC を作ろうとして namespace 不在で
+# 失敗すると、自動 sync は同じリビジョンを再試行しないので csi-s3 が詰まる。
+# worlds の Application の CreateNamespace=true は「無ければ作る」だけで追跡ラベルを付けない
+# (所有しない)ので、併用しても衝突しない。
+# Prune=false: このファイルを消しても namespace ごと worlds のリソースが消えないように
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: worlds
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false

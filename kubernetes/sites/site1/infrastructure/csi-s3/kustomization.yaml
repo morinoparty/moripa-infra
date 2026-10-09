@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# csi-s3 本体は bootstrap/applications/csi-s3.yaml の Helm source。ここは付随リソース。
+# PVC は namespace worlds に置くので、ここで namespace: を一括指定しないこと(各リソースに明記)
+resources:
+  - namespace-worlds.yaml
+  - schematics.yaml
+# csi-s3 の接続先と鍵(sops + ksops。ローカルの kubectl kustomize ではビルドできないので
+# CI / make lint-kustomize の対象外)
+generators:
+  - secret-generator.yaml

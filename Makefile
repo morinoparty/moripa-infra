@@ -122,6 +122,16 @@ lint-helm: ## Cilium values (common + 各 site) が chart に対して有効か�
 	  --version $$mv -n monitoring --kube-version $$kv \
 	  -f kubernetes/sites/site1/infrastructure/monitoring/values.yaml > /dev/null \
 	  && echo "kube-prometheus-stack values OK (site1)" || exit 1
+	@rv=$$(grep -oP 'rustfs_chart_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	kv=$$(grep -oP 'k8s_full_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	helm template rustfs rustfs --repo https://charts.rustfs.com --version $$rv -n rustfs --kube-version $$kv \
+	  -f kubernetes/sites/site1/infrastructure/rustfs/values.yaml > /dev/null \
+	  && echo "rustfs values OK (site1)" || exit 1
+	@cv=$$(grep -oP 'csi_s3_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	kv=$$(grep -oP 'k8s_full_version: "\K[^"]+' ansible/group_vars/all/versions.yml); \
+	helm template csi-s3 csi-s3 --repo https://yandex-cloud.github.io/k8s-csi-s3/charts --version $$cv -n csi-s3 \
+	  --kube-version $$kv -f kubernetes/sites/site1/infrastructure/csi-s3/values.yaml > /dev/null \
+	  && echo "csi-s3 values OK (site1)" || exit 1
 
 # Caddy の公式ビルド API から caddy-dns/cloudflare 入りのバイナリを取る(ハブと同じもの)。
 # generated.caddy(Ansible 生成)を手元にレンダリングし、git の gateway/caddy/Caddyfile と

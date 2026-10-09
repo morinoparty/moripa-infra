@@ -188,6 +188,24 @@ for site in SITES:
         f"[{site}] headlamp App targetRevision={chart_rev} != headlamp_version={versions['headlamp_version']}",
     )
 
+# --- rustfs / csi-s3 App targetRevision ↔ versions.yml ----------------------------
+for site in SITES:
+    for app_file, chart, key in (
+        ("rustfs.yaml", "rustfs", "rustfs_chart_version"),
+        ("csi-s3.yaml", "csi-s3", "csi_s3_version"),
+    ):
+        app_path = ROOT / f"kubernetes/sites/{site}/bootstrap/applications/{app_file}"
+        if not app_path.exists():
+            continue
+        app = yaml.safe_load(app_path.read_text())
+        chart_rev = next(
+            s["targetRevision"] for s in app["spec"]["sources"] if s.get("chart") == chart
+        )
+        check(
+            chart_rev == versions[key],
+            f"[{site}] {chart} App targetRevision={chart_rev} != {key}={versions[key]}",
+        )
+
 # --- tcp_routes + proxy_public_ports ↔ terraform public_tcp_ports -------------
 proxy_ports = {int(p) for p in network["proxy_public_ports"]}
 tcp_routes = network.get("tcp_routes") or []

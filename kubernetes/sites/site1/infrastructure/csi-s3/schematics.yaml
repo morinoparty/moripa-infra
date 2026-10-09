@@ -1,0 +1,49 @@
+# RustFS のバケット moripa-utils の schematics/ を、worlds の Pod へ読み取り専用で見せる静的 PV / PVC。
+# geesefs はノードの host 側で動くので、endpoint は固定 ClusterIP(infrastructure/rustfs/service-host.yaml)。
+# ファイルは 0444 / ディレクトリは 0555 で見せる(ワールドの Pod は uid 10001 で読む)。
+# 書き込み・削除は S3 API(moripa-worlds の worlds ユーザー)側で行い、マウントは参照専用。
+# S3 側の変更が見えるまで stat-cache-ttl ぶん(〜10 秒)遅れる
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: schematics
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadOnlyMany
+  persistentVolumeReclaimPolicy: Retain
+  # 実在しない StorageClass 名。PVC 側と一致させ、PVC の volumeName でこの PV に結び付ける
+  # (既定の StorageClass = Longhorn に動的プロビジョニングさせないため)。
+  # claimRef はあえて書かない: ObjectReference は atomic な struct なので、bind 後に PV コントローラが
+  # uid / resourceVersion を書くと Argo CD(SSA + selfHeal)の差分が永久に OutOfSync になり、
+  # uid 無しの claimRef を書き戻し続けてしまう。claimRef は PV コントローラにだけ書かせる
+  storageClassName: csi-s3-static
+  csi:
+    driver: ru.yandex.s3.csi
+    # <バケット>/<プレフィックス>
+    volumeHandle: moripa-utils/schematics
+    nodeStageSecretRef:
+      name: csi-s3-secret
+      namespace: csi-s3
+    nodePublishSecretRef:
+      name: csi-s3-secret
+      namespace: csi-s3
+    volumeAttributes:
+      capacity: 10Gi
+      mounter: geesefs
+      options: "--list-type 2 --no-checksum --stat-cache-ttl 10s --memory-limit 256 -o ro --dir-mode 0555 --file-mode 0444"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: schematics
+  namespace: worlds
+spec:
+  accessModes:
+    - ReadOnlyMany
+  storageClassName: csi-s3-static
+  volumeName: schematics
+  resources:
+    requests:
+      storage: 10Gi

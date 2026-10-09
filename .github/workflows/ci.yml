@@ -75,6 +75,12 @@ jobs:
           helm template monitoring kube-prometheus-stack --repo https://prometheus-community.github.io/helm-charts \
             --version "$mv" -n monitoring --kube-version "$kv" \
             -f kubernetes/sites/site1/infrastructure/monitoring/values.yaml > /dev/null
+          rv=$(grep -oP 'rustfs_chart_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
+          helm template rustfs rustfs --repo https://charts.rustfs.com --version "$rv" --kube-version "$kv" \
+            -n rustfs -f kubernetes/sites/site1/infrastructure/rustfs/values.yaml > /dev/null
+          cv=$(grep -oP 'csi_s3_version: "\K[^"]+' ansible/group_vars/all/versions.yml)
+          helm template csi-s3 csi-s3 --repo https://yandex-cloud.github.io/k8s-csi-s3/charts --version "$cv" \
+            --kube-version "$kv" -n csi-s3 -f kubernetes/sites/site1/infrastructure/csi-s3/values.yaml > /dev/null
 
       - name: kustomize build(secrets/ksops を含む overlay は対象外)
         run: |

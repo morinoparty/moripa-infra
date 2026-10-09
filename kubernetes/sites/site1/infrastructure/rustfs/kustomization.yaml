@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# RustFS 本体は bootstrap/applications/rustfs.yaml の Helm source。ここは付随リソース
+namespace: rustfs
+resources:
+  - ingress.yaml
+  - service-host.yaml
+  - provision.yaml
+# root の認証情報と、プロビジョニングで登録する IAM ユーザーのシークレット(sops + ksops。
+# ローカルの kubectl kustomize ではビルドできないので CI / make lint-kustomize の対象外)
+generators:
+  - secret-generator.yaml

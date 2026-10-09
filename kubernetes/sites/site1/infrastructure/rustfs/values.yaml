@@ -1,0 +1,53 @@
+# RustFS(S3 互換オブジェクトストレージ)の values。standalone(Deployment 1 台 + Longhorn の PVC 1 本)。
+# 冗長化は Longhorn の 3 レプリカに任せ、RustFS 自身の erasure coding(distributed)は使わない。
+# リリース名 rustfs = chart 名なので fullname は "rustfs" → S3 は Service rustfs-svc の :9000
+# (worlds の moripa-worlds が rustfs-svc.rustfs.svc.cluster.local:9000 を直書きしている)。
+# 公開は Ingress(ingress.yaml)で行うので chart の ingress は使わない
+mode:
+  standalone:
+    enabled: true
+    # Longhorn の RWO ボリュームは同時に 2 Pod へ付かないので、更新は止めてから起動
+    strategy:
+      type: Recreate
+  distributed:
+    enabled: false
+replicaCount: 1
+
+image:
+  rustfs:
+    tag: "1.0.1"
+  initImage:
+    tag: "1.37.0"
+
+# root の認証情報(RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY)は sops の Secret rustfs-root(secrets.sops.yaml)
+secret:
+  existingSecret: rustfs-root
+
+config:
+  rustfs:
+    region: us-east-1
+    # 空にするとログは stdout へ出て、chart はログ用 PVC を作らない
+    obs_log_directory: ""
+    obs_environment: production
+
+storageclass:
+  name: longhorn
+  dataStorageSize: 50Gi
+
+ingress:
+  enabled: false
+
+# readOnlyRootFilesystem なので書き込み可能な /tmp を足す
+extraVolumes:
+  - name: tmp
+    emptyDir: {}
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 2Gi

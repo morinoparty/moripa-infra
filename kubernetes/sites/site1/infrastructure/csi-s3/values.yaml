@@ -1,0 +1,9 @@
+# k8s-csi-s3(yandex-cloud)の values。S3 のバケットを geesefs(FUSE)で Pod にマウントする CSI ドライバ。
+# 使い道は RustFS のバケット moripa-utils の schematics/ を worlds へ読み取り専用で見せることだけなので、
+# 動的プロビジョニング(StorageClass)は作らず、静的 PV(schematics.yaml)を 1 本置く。
+# 接続先と鍵は ksops の Secret csi-s3-secret(secrets.sops.yaml)。chart には鍵を渡さない
+storageClass:
+  create: false
+secret:
+  create: false
+  name: csi-s3-secret

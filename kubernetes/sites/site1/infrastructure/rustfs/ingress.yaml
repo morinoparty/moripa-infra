@@ -1,0 +1,40 @@
+# S3 API は公開側のホスト名(Caddy で TLS 終端 → ノードの :80)。認証は S3 の署名(アクセスキー)のみ
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rustfs-s3
+  namespace: rustfs
+spec:
+  ingressClassName: cilium
+  rules:
+    - host: rustfs.site1.dev.morino.party
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rustfs-svc
+                port:
+                  number: 9000
+---
+# 管理コンソール(/rustfs/console/)は private(oauth2-proxy)側のホスト名。
+# その先で RustFS 自身のログイン(root のアクセスキー / シークレット)も要る
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rustfs-console
+  namespace: rustfs
+spec:
+  ingressClassName: cilium
+  rules:
+    - host: rustfs-console.site1.private.dev.morino.party
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rustfs-svc
+                port:
+                  number: 9001

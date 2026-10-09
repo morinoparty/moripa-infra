@@ -1,0 +1,21 @@
+# csi-s3 の geesefs はノードの host 側(systemd の transient unit)で動くので、クラスタ DNS
+# (rustfs-svc.rustfs.svc.cluster.local)を引けない。host → ClusterIP は Cilium の KPR で届くので、
+# 固定 ClusterIP の Service を別に用意して csi-s3 の Secret に IP で書く
+# (infrastructure/csi-s3/secrets.sops.yaml の endpoint)。
+# 10.96.0.0/24 は静的割り当て用の帯(.1 = kubernetes、.10 = kube-dns)。selector は chart の
+# selectorLabels(app.kubernetes.io/name / instance)と同じ
+apiVersion: v1
+kind: Service
+metadata:
+  name: rustfs-s3-host
+  namespace: rustfs
+spec:
+  type: ClusterIP
+  clusterIP: 10.96.0.90
+  selector:
+    app.kubernetes.io/name: rustfs
+    app.kubernetes.io/instance: rustfs
+  ports:
+    - name: endpoint
+      port: 9000
+      targetPort: 9000

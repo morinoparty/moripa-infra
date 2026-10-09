@@ -36,3 +36,10 @@ headlamp_version: "0.45.0"
 # kube-prometheus-stack(prometheus-community.github.io/helm-charts の chart。
 # bootstrap/applications/monitoring.yaml と一致)
 kube_prometheus_stack_version: "90.1.1"
+
+# RustFS(charts.rustfs.com の chart。bootstrap/applications/rustfs.yaml と一致)。
+# chart 1.0.1 の appVersion = rustfs/rustfs:1.0.1(values.yaml でもタグを固定)
+rustfs_chart_version: "1.0.1"
+
+# csi-s3(yandex-cloud.github.io/k8s-csi-s3/charts の chart。bootstrap/applications/csi-s3.yaml と一致)
+csi_s3_version: "0.43.7"

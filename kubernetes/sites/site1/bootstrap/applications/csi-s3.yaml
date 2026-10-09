@@ -1,0 +1,43 @@
+# csi-s3(yandex-cloud/k8s-csi-s3、ドライバ ru.yandex.s3.csi)。S3 のバケットを geesefs で Pod に
+# マウントする。用途は RustFS の moripa-utils/schematics を worlds へ読み取り専用で見せる静的 PV だけ。
+# chart は yandex-cloud.github.io/k8s-csi-s3/charts、values / PV・PVC / 接続先 Secret(sops)は git。
+# targetRevision は ansible/group_vars/all/versions.yml の csi_s3_version と一致させること
+# (make check-consistency で検査)。
+# PVC schematics は namespace worlds に置く。その namespace もこの Application が作る
+# (infrastructure/csi-s3/namespace-worlds.yaml。理由はそちらのコメント)。
+# 注意: geesefs は Pod ではなく host の systemd unit で動くので、chart を更新したら
+# マウントを使っている Pod(worlds のワールド)を再起動する(upstream issue #179 / #156)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csi-s3
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://yandex-cloud.github.io/k8s-csi-s3/charts
+      chart: csi-s3
+      targetRevision: 0.43.7
+      helm:
+        releaseName: csi-s3
+        valueFiles:
+          - $values/kubernetes/sites/site1/infrastructure/csi-s3/values.yaml
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/morinoparty/moripa-infra.git
+      targetRevision: main
+      path: kubernetes/sites/site1/infrastructure/csi-s3
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: csi-s3
+  syncPolicy:
+    automated:
+      selfHeal: true
+      # PV は Retain だが、PV / PVC / namespace worlds を prune で消さないよう安全側
+      prune: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

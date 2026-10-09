@@ -1,0 +1,141 @@
+# バケットと IAM ユーザー / ポリシーの投入。ArgoCD の PostSync hook(RustFS が Healthy になった後)に
+# 毎回走る。rc の各操作は冪等(既存のバケット・ユーザー・ポリシーは上書き / そのまま)なので、
+# キーを差し替えたら secrets.sops.yaml を更新して sync すれば反映される。
+#
+# | ユーザー(= アクセスキー) | ポリシー | 権限 |
+# |---|---|---|
+# | moripa-utils | moripa-utils-rw | バケット moripa-utils の読み書き(MoripaUtils プラグイン) |
+# | worlds | worlds-schematics | schematics/* の Get / Delete + List(worlds の moripa-worlds) |
+# | csi-s3 | csi-s3-schematics-ro | schematics/* の Get + List(csi-s3 の読み取り専用マウント) |
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rustfs-provision
+  namespace: rustfs
+data:
+  provision.sh: |
+    set -eu
+    # RustFS の起動を待つ(PostSync なので通常は即通る)
+    i=0
+    until wget -q -T 5 -O /dev/null http://rustfs-svc.rustfs.svc.cluster.local:9000/health/ready; do
+      i=$((i + 1))
+      if [ "$i" -ge 60 ]; then
+        echo "RustFS が ready にならない" >&2
+        exit 1
+      fi
+      sleep 5
+    done
+
+    A=local; B=moripa-utils; W=/tmp/prov; mkdir -p "$W"
+    cat > "$W/moripa-utils.json" <<J
+    {"Version":"2012-10-17","Statement":[
+     {"Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:DeleteObject","s3:AbortMultipartUpload","s3:ListMultipartUploadParts"],"Resource":["arn:aws:s3:::$B/*"]},
+     {"Effect":"Allow","Action":["s3:ListBucket","s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$B"]}]}
+    J
+    cat > "$W/worlds.json" <<J
+    {"Version":"2012-10-17","Statement":[
+     {"Effect":"Allow","Action":["s3:GetObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::$B/schematics/*"]},
+     {"Effect":"Allow","Action":["s3:ListBucket","s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$B"]}]}
+    J
+    cat > "$W/csi-s3.json" <<J
+    {"Version":"2012-10-17","Statement":[
+     {"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::$B/schematics/*"]},
+     {"Effect":"Allow","Action":["s3:ListBucket","s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$B"]}]}
+    J
+    rc bucket create --ignore-existing "$A/$B" >/dev/null
+    rc admin user add "$A" moripa-utils "$UTILS_SK"
+    rc admin user add "$A" worlds "$WORLDS_SK"
+    rc admin user add "$A" csi-s3 "$CSI_SK"
+    rc admin policy create "$A" moripa-utils-rw "$W/moripa-utils.json"
+    rc admin policy create "$A" worlds-schematics "$W/worlds.json"
+    rc admin policy create "$A" csi-s3-schematics-ro "$W/csi-s3.json"
+    rc admin policy attach "$A" moripa-utils-rw --user moripa-utils
+    rc admin policy attach "$A" worlds-schematics --user worlds
+    rc admin policy attach "$A" csi-s3-schematics-ro --user csi-s3
+    echo "provision OK"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rustfs-provision
+  namespace: rustfs
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # rustfs/rc イメージの rc ユーザー
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provision
+          image: rustfs/rc:v0.1.36
+          command: ["sh", "-e", "/prov/provision.sh"]
+          env:
+            # $(VAR) の展開は先に定義した env しか参照できないので、root の 2 つを先に置く。
+            # キーは URL にそのまま埋めるので英数字のみで生成すること
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-root
+                  key: RUSTFS_ACCESS_KEY
+            - name: RUSTFS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-root
+                  key: RUSTFS_SECRET_KEY
+            - name: RC_HOST_local
+              value: http://$(RUSTFS_ACCESS_KEY):$(RUSTFS_SECRET_KEY)@rustfs-svc.rustfs.svc.cluster.local:9000
+            - name: RC_CONFIG_DIR
+              value: /tmp/rc
+            - name: HOME
+              value: /tmp
+            - name: UTILS_SK
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-provision
+                  key: UTILS_SK
+            - name: WORLDS_SK
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-provision
+                  key: WORLDS_SK
+            - name: CSI_SK
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-provision
+                  key: CSI_SK
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: prov
+              mountPath: /prov
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: prov
+          configMap:
+            name: rustfs-provision
+            defaultMode: 0444
+        - name: tmp
+          emptyDir: {}

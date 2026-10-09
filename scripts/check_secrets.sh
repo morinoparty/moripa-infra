@@ -17,6 +17,8 @@ patterns=(
   # Cloudflare token / OAuth client secrets / cookie secrets (group_vars/gateway/auth.sops.yml)
   '^cloudflare_dns_api_token: *[^E ].*'
   '^oauth2_proxy_[a-z]+_(client_secret|cookie_secret): *[^E ].*'
+  # RustFS root / IAM user secrets and the csi-s3 secret (k8s Secret stringData, becomes ENC[...] afterwards)
+  '^ *(RUSTFS_SECRET_KEY|UTILS_SK|WORLDS_SK|CSI_SK|secretAccessKey): *[^E ].*'
   # Discord webhook URL (anyone holding it can post to the channel)
   'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+'
 )

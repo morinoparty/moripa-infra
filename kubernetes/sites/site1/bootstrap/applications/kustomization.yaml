@@ -7,4 +7,6 @@ resources:
   - storage.yaml
   - headlamp.yaml
   - monitoring.yaml
+  - rustfs.yaml
+  - csi-s3.yaml
   - apps.yaml

@@ -127,10 +127,12 @@ SOPS_AGE_KEY_FILE=~/keys/age-admin.agekey sops kubernetes/sites/site1/apps/world
 ## 導入の順番
 
 1. **ianua-silvae**: コンテナイメージを追加する PR をマージし、`ghcr.io/morinoparty/ianua-silvae` の
-   package を **public** にする(クラスタは pull secret を持たない)。最初の publish 後、
+   package を **public** にする(クラスタは pull secret を持たない。ログインしていない状態で
+   `docker pull ghcr.io/morinoparty/ianua-silvae:main` が通ることで確認する)。最初の publish 後、
    `moripa-worlds.yaml` の `WORLD_IMAGE` をタグ + ダイジェストで固定する
-2. **moripa-worlds**: 同じく `ghcr.io/morinoparty/moripa-worlds` を publish して public にする
-   (最初は `:main`。落ち着いたらダイジェストで固定)
+2. **moripa-worlds**: `ghcr.io/morinoparty/moripa-worlds` は publish 済み・public(匿名 pull を確認済み)。
+   `moripa-worlds.yaml` は `sha-<short>@sha256:...` で固定してあるので、コントローラを更新するときは
+   新しい `sha-<short>` のダイジェストに書き換えて push する
 3. **infra を push**: ArgoCD がまず sync-wave 1 の `rustfs`(RustFS 本体。PostSync の Job `rustfs-provision` が
    バケット `moripa-utils` と IAM ユーザー `moripa-utils`・`worlds`・`csi-s3` / ポリシーを入れる)と
    `csi-s3`(ドライバ・namespace `worlds`・PV / PVC `schematics`)を、続いて wave 2 の `apps` 配下の `worlds`

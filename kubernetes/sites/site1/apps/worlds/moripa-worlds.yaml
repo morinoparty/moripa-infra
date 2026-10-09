@@ -77,9 +77,10 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: moripa-worlds
-          # TODO: 最初の publish 後にダイジェストで固定する(main は動くタグ)
-          image: ghcr.io/morinoparty/moripa-worlds:main
-          imagePullPolicy: Always
+          # morinoparty/moripa-worlds の main(118169c)をダイジェストで固定。更新は新しい sha-<short> の
+          # ダイジェストに書き換えて push する(docker buildx imagetools inspect ghcr.io/morinoparty/moripa-worlds:sha-<short>)
+          image: ghcr.io/morinoparty/moripa-worlds:sha-118169c@sha256:92d6398a68450be872634c6bf6b1e8cb714b7a4ac494ad85479fb48b38b2e2d3
+          imagePullPolicy: IfNotPresent
           env:
             - name: NAMESPACE
               valueFrom:

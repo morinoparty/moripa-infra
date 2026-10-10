@@ -122,10 +122,13 @@ spec:
                 secretKeyRef:
                   name: moripa-worlds-s3
                   key: AWS_SECRET_ACCESS_KEY
-            # ワールドのサーバー(github.com/morinoparty/ianua-silvae)。
-            # TODO: 最初の publish 後に ghcr.io/morinoparty/ianua-silvae:<tag>@sha256:… で固定する
+            # ワールドのサーバー(github.com/morinoparty/ianua-silvae)。値は kustomization.yaml の replacements が
+            # lobby のイメージ(images でダイジェスト固定)で上書きする。ダイジェスト付きなので IfNotPresent で取る
             - name: WORLD_IMAGE
-              value: ghcr.io/morinoparty/ianua-silvae:main
+              value: ghcr.io/morinoparty/ianua-silvae
+            # ワールドの CPU の request(limit は無し)。JVM の起動を速くするため 100m から上げた
+            - name: WORLD_CPU_REQUEST
+              value: 200m
             # schematic を読み取り専用で見せる PVC(csi-s3 / geesefs で moripa-utils/schematics をマウント)
             - name: WORLD_SCHEMATICS_PVC
               value: schematics

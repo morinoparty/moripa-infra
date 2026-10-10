@@ -68,8 +68,8 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: server
-          # ianua-silvae の main(Minecraft 26.3 / protocol 777)をダイジェストで固定
-          image: ghcr.io/morinoparty/ianua-silvae:main@sha256:9f505aa2dca72b8b85f8a3d91ffab34dc54e8fe877f4a37f0e649014fbe50bec
+          # ianua-silvae の main(Minecraft 26.3 / protocol 777)。タグ・ダイジェストは kustomization.yaml の images で固定する
+          image: ghcr.io/morinoparty/ianua-silvae
           imagePullPolicy: IfNotPresent
           env:
             - name: IANUA_VELOCITY_SECRET

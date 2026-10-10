@@ -150,6 +150,18 @@ curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/v1/worlds/<uuid>
 (geesefs は一覧を 10 秒ほどキャッシュするので、上げた直後は見えないことがある)。
 ワールドもロビーもディスクに何も書かない(読み取り専用の schematic を貼るだけ)ので、消しても失うものは無い。
 
+### 配置と起動の速さ
+
+- ワールドの Pod は CPU request `WORLD_CPU_REQUEST`(200m、limit 無し)、メモリ request 384Mi / limit 768Mi。
+  実測の使用量は 1 つ 190〜220MiB(ロビーは約 180MiB)
+- Pod には `topologySpreadConstraints`(`kubernetes.io/hostname`、`ScheduleAnyway`)を付けてノードに散らす。
+  付けないとスケジューラーはイメージを持つノードを好むので、最初に起動したノードに偏る
+- DaemonSet `world-image-prepull`(`prepull.yaml`)が ianua-silvae と busybox のイメージを全ノードに取っておく。
+  ワールドのイメージはダイジェスト固定なので `IfNotPresent` になり、起動のたびに ghcr.io へ問い合わせない
+  (`:main` のままだと毎回 `Always` で、遅いときは取得だけで 10 秒以上かかっていた)
+- ianua-silvae のイメージは `kustomization.yaml` の `images` だけで固定する。lobby と prepull はそこから、
+  moripa-worlds の `WORLD_IMAGE` は `replacements` で lobby の値をコピーするので、3 か所は常に同じになる
+
 ## ロビー
 
 - `lobby.yaml` の ConfigMap `lobby-config` に `config.json` と足場の schematic(`binaryData.lobby.schem`、300 バイト弱)を入れ、
@@ -221,8 +233,8 @@ kubectl -n worlds delete deploy,svc,cm -l app.kubernetes.io/managed-by=moripa-wo
 
 初めて入れるとき:
 
-1. **ianua-silvae**: `ghcr.io/morinoparty/ianua-silvae` は public。ロビーとワールドは 26.3 版の `main` を使う
-   (ロビーはダイジェストで固定。ワールドは `moripa-worlds.yaml` の `WORLD_IMAGE`)
+1. **ianua-silvae**: `ghcr.io/morinoparty/ianua-silvae` は public。ロビーとワールドは 26.3 版の `main` を
+   `kustomization.yaml` の `images` でダイジェスト固定して使う(`WORLD_IMAGE` には `replacements` で同じ値が入る)
 2. **moripa-worlds**: `ghcr.io/morinoparty/moripa-worlds` は public。`gate.yaml` と `moripa-worlds.yaml` は
    同じ `sha-<short>@sha256:...` で固定する
 3. **infra を push**: ArgoCD がまず sync-wave 1 の `rustfs`(RustFS 本体。PostSync の Job `rustfs-provision` が

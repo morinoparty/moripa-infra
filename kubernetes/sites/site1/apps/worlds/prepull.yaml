@@ -1,0 +1,67 @@
+# ワールドのイメージ(ianua-silvae)を全ノードに先に取っておく。
+# ワールドの Pod は起動のたびに作り直すので、イメージがノードに無いとその場で ghcr.io から取りに行き、
+# 起動が 1〜15 秒ほど遅れる。init コンテナでイメージを取って `true` だけ実行し、あとは pause で居座る
+# (使用中のイメージはノードの GC で消されない)。イメージは kustomization.yaml の images で lobby / ワールドと同じ値に固定する
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: world-image-prepull
+  labels:
+    app.kubernetes.io/name: world-image-prepull
+    app.kubernetes.io/part-of: worlds
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: world-image-prepull
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: world-image-prepull
+        app.kubernetes.io/part-of: worlds
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: ianua-silvae
+          image: ghcr.io/morinoparty/ianua-silvae
+          imagePullPolicy: IfNotPresent
+          command: ["true"]
+          securityContext: &sc
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          resources: &res
+            requests:
+              cpu: 1m
+              memory: 8Mi
+            limits:
+              memory: 16Mi
+        - name: busybox
+          # ワールドの init コンテナ(wait-schematic)のイメージ。moripa-worlds の world.InitImage と揃える
+          image: busybox:1.37
+          imagePullPolicy: IfNotPresent
+          command: ["true"]
+          securityContext: *sc
+          resources: *res
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          securityContext: *sc
+          resources: *res

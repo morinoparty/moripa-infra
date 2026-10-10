@@ -6,6 +6,7 @@ resources:
   - lobby.yaml
   - moripa-worlds.yaml
   - networkpolicy.yaml
+  - prepull.yaml
 # 秘密は sops で暗号化した secrets.sops.yaml を ksops が復号して投入する(ローカルの kubectl kustomize ではビルドできない):
 #   moripa-worlds-s3  : moripa-worlds が RustFS(S3)を読むためのキー。同じキーを RustFS 側にもユーザーとして
 #                       登録する(バケット moripa-utils の schematics/ だけ)
@@ -17,7 +18,22 @@ resources:
 # proxy / controller サブコマンドを持つのは sha-5f86085 以降(それより前の waker 版に戻すと両方 CrashLoop する)
 images:
   - name: ghcr.io/morinoparty/moripa-worlds
-    newTag: sha-5f86085
-    digest: sha256:4357e4a346fb45394de35982b4f1184417c1dad9cf3a596d88d47772febbcbba
+    newTag: sha-d9884e6
+    digest: sha256:2a9fba86e7446e61f3fe18dc20e02f68e213fa137e83ffb923a65dfb72fa14bc
+  # ianua-silvae(lobby・prepull・ワールド)。ワールドの WORLD_IMAGE には下の replacements で同じ値が入る
+  - name: ghcr.io/morinoparty/ianua-silvae
+    newTag: main
+    digest: sha256:9f505aa2dca72b8b85f8a3d91ffab34dc54e8fe877f4a37f0e649014fbe50bec
+replacements:
+  - source:
+      kind: Deployment
+      name: lobby
+      fieldPath: spec.template.spec.containers.[name=server].image
+    targets:
+      - select:
+          kind: Deployment
+          name: moripa-worlds
+        fieldPaths:
+          - spec.template.spec.containers.[name=moripa-worlds].env.[name=WORLD_IMAGE].value
 generators:
   - secret-generator.yaml

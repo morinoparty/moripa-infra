@@ -1,7 +1,7 @@
 # Honcho(自前ホストのメモリ層)。postgres(pgvector)/ redis / API / deriver の 4 つ。
 # LLM はできるだけ安く: 生成系(deriver / summary / dialectic / dream)はすべて OpenCode Go の
 # 定額枠(glm-5.3-flash、月 $60 相当の枠)に載せ、Go に無い embeddings だけ OpenRouter の
-# text-embedding-3-small($0.02/M)を使う。
+# text-embedding-3-small($0.02/M)を使う。生成系のフォールバックは OpenRouter の MiMo-V2.6-Flash。
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -158,36 +158,88 @@ data:
   EMBEDDING_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
   EMBEDDING_MODEL_CONFIG__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
 
+  # OpenCode Go は x-opencode-session ヘッダ必須(無いと 400 MissingSessionID)。
+  # 「会話ごとに安定した ID」を求めているのでモジュール単位で固定値を送り、UA も自前名にする。
+  # 3 回目(最終)のリトライだけ FALLBACK に切り替わる。Go 側の障害・仕様変更で全滅しないよう
+  # フォールバックは別プロバイダ(OpenRouter の MiMo-V2.6-Flash、$0.14/$0.28 per M)にする
   DERIVER_MODEL_CONFIG__TRANSPORT: "openai"
   DERIVER_MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DERIVER_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
-  # json_schema 非対応のプロバイダ向け
+  DERIVER_MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-deriver","User-Agent":"moripa-honcho/1.0"}}'
   DERIVER_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+  DERIVER_MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DERIVER_MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DERIVER_MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DERIVER_MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
+  DERIVER_MODEL_CONFIG__FALLBACK__STRUCTURED_OUTPUT_MODE: "json_object"
 
   SUMMARY_MODEL_CONFIG__TRANSPORT: "openai"
   SUMMARY_MODEL_CONFIG__MODEL: "glm-5.3-flash"
   SUMMARY_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  SUMMARY_MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-summary","User-Agent":"moripa-honcho/1.0"}}'
   SUMMARY_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+  SUMMARY_MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  SUMMARY_MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  SUMMARY_MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  SUMMARY_MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
+  SUMMARY_MODEL_CONFIG__FALLBACK__STRUCTURED_OUTPUT_MODE: "json_object"
 
   # dialectic は推論レベルごとにモデルを持てるが、全部同じ安いモデルにする
   DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dialectic","User-Agent":"moripa-honcho/1.0"}}'
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
   DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DIALECTIC_LEVELS__low__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dialectic","User-Agent":"moripa-honcho/1.0"}}'
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
   DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DIALECTIC_LEVELS__medium__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dialectic","User-Agent":"moripa-honcho/1.0"}}'
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
   DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DIALECTIC_LEVELS__high__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dialectic","User-Agent":"moripa-honcho/1.0"}}'
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
   DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DIALECTIC_LEVELS__max__MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dialectic","User-Agent":"moripa-honcho/1.0"}}'
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
 
   # dream = アイドル時の観察の統合
   DREAM_DEDUCTION_MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DREAM_DEDUCTION_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DREAM_DEDUCTION_MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dream","User-Agent":"moripa-honcho/1.0"}}'
   DREAM_DEDUCTION_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+  DREAM_DEDUCTION_MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DREAM_DEDUCTION_MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DREAM_DEDUCTION_MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DREAM_DEDUCTION_MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
+  DREAM_DEDUCTION_MODEL_CONFIG__FALLBACK__STRUCTURED_OUTPUT_MODE: "json_object"
   DREAM_INDUCTION_MODEL_CONFIG__MODEL: "glm-5.3-flash"
   DREAM_INDUCTION_MODEL_CONFIG__OVERRIDES__BASE_URL: "https://opencode.ai/zen/go/v1"
+  DREAM_INDUCTION_MODEL_CONFIG__OVERRIDES__PROVIDER_PARAMS: '{"extra_headers":{"x-opencode-session":"honcho-dream","User-Agent":"moripa-honcho/1.0"}}'
   DREAM_INDUCTION_MODEL_CONFIG__STRUCTURED_OUTPUT_MODE: "json_object"
+  DREAM_INDUCTION_MODEL_CONFIG__FALLBACK__TRANSPORT: "openai"
+  DREAM_INDUCTION_MODEL_CONFIG__FALLBACK__MODEL: "xiaomi/mimo-v2.6-flash"
+  DREAM_INDUCTION_MODEL_CONFIG__FALLBACK__OVERRIDES__BASE_URL: "https://openrouter.ai/api/v1"
+  DREAM_INDUCTION_MODEL_CONFIG__FALLBACK__OVERRIDES__API_KEY_ENV: "OPENROUTER_API_KEY"
+  DREAM_INDUCTION_MODEL_CONFIG__FALLBACK__STRUCTURED_OUTPUT_MODE: "json_object"
 ---
 apiVersion: apps/v1
 kind: Deployment

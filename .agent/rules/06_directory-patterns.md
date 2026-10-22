@@ -1,0 +1,24 @@
+## ディレクトリ配置規則
+
+- `Makefile` - 主要操作の入口 (`make help` で一覧)
+- `.sops.yaml` - sops + age の暗号化ルール (公開鍵のみ)
+- `terraform/modules/linode-gateway/` に Linode Nanode + Firewall + cloud-init のモジュールを配置します。
+- `terraform/envs/prod/` に実環境の値 (`main.tf`, `terraform.tfvars` など) を配置します。state はローカル + gitignore です。
+- `gateway/caddy/` に Linode 上の Caddy のルーティング表 (`Caddyfile`) とログイン選択画面 (`www/`) を配置します。ハブが git から自動で取り込みます。
+- `ansible/` に Ansible を配置します。
+  - `ansible/inventory/hosts.yml` - インベントリ (gateway / site1 / site2 / k8s_cluster / spare / wings_nodes)
+  - `ansible/group_vars/` - グループ変数。`all/network.yml` (ネットワーク値の唯一の正)、`all/versions.yml` (バージョンピン)、`gateway/`、`k8s_cluster/`、`wings_nodes/`、`site1.yml` / `site2.yml`
+  - `ansible/host_vars/<host>/` - `main.yml` (wg 公開鍵など平文) と `wireguard.sops.yml` (wg 秘密鍵、sops 暗号化)
+  - `ansible/inventory/group_vars` と `ansible/inventory/host_vars` は `../group_vars` / `../host_vars` への symlink です。消さないでください (消すと全変数が未定義になります)。
+  - `ansible/roles/<role>/` - ロール (`tasks/`, `handlers/`, `templates/`, `defaults/`)。現在のロール: `base`, `wireguard`, `cluster_lan`, `wg_dns`, `auth_proxy`, `reverse_proxy`, `tcp_proxy`, `k8s_prereq`, `longhorn_prereq`, `node_exporter`, `wings_host`, `k8s_bootstrap`
+  - `ansible/playbooks/` - `site.yml` (= `gateway.yml` + `cluster.yml`)、`render-caddy.yml` (`make lint-caddy` 用)
+- `kubernetes/` に各拠点の ArgoCD が監視するマニフェストを配置します。
+  - `kubernetes/common/` - 両拠点共通のベース (`argocd/`, `cilium/values.yaml`, `gateway-api-crds/`, `cert-manager/`)
+  - `kubernetes/sites/<site>/bootstrap/` - `argocd/` (common/argocd の overlay)、`secrets/` (out-of-band で投入する Secret)、`applications/` (app-of-apps)、`root-app.yaml`
+  - `kubernetes/sites/<site>/infrastructure/<component>/` - 基盤コンポーネントの values / Ingress など (site1: `cilium`, `storage`, `monitoring`, `rustfs`, `csi-s3`, `headlamp`。site2: `cilium`, `monitoring`)
+  - `kubernetes/sites/<site>/apps/` - 個別アプリの Application (`<app>-app.yaml`) と、その中身のディレクトリ (`<app>/`)。site1: `hermes`, `wings`, `worlds`
+  - 秘密を含む overlay は `secret-generator.yaml` (ksops) + `secrets.sops.yaml` の組で配置します。
+  - kustomize の overlay を追加した場合は、ksops を含まないものであれば `Makefile` の `KUSTOMIZE_DIRS` と CI の一覧にも追加してください。
+- `scripts/` に検証・補助スクリプト (`check_consistency.py`, `check_secrets.sh`, `gen_node_bootstrap.py`, `make_lobby_schem.py`) を配置します。
+- `docs/` に fumadocs のドキュメントサイトを配置し、本文は `docs/content/docs/` (`onsite/`, `admin/`, `architecture/`) に置きます。
+- `.github/workflows/` に CI (`ci.yml`) とドキュメントのデプロイ (`deploy-docs.yml`) を配置します。

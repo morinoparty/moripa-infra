@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="robots" content="noindex" />
+    <title>morino.party ログイン</title>
+    <!-- Chlorophyll の fonts.sans（'Satoshi', 'GenJyuuGothicLP'）はフォントファイルを同梱しないため、docs と同じ配信元から読み込む -->
+    <link rel="preconnect" href="https://api.fontshare.com" />
+    <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" />
+    <link rel="stylesheet" href="https://shogo82148.github.io/genjyuugothic-subsets/GenJyuuGothicL-P-Medium/GenJyuuGothicL-P-Medium.css" />
+    <link rel="stylesheet" href="https://shogo82148.github.io/genjyuugothic-subsets/GenJyuuGothicL-P-Bold/GenJyuuGothicL-P-Bold.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- JavaScript が無効でもログインできるようにする（rd は引き継げないのでログイン後は移動先へ戻らない） -->
+    <noscript>
+      <p><a href="/oauth2/mineauth/start">MineAuth でログイン</a></p>
+      <p><a href="/oauth2/github/start">GitHub でログイン</a></p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

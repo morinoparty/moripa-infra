@@ -1,0 +1,39 @@
+{
+  "images": [
+    {
+      "src": "atsumori.avif",
+      "blurhash": "LSEWB{~Wad9^GKOat7xF00D*XAs:",
+      "width": 1920,
+      "height": 1080,
+      "position": "40% center"
+    },
+    {
+      "src": "kamimori.avif",
+      "blurhash": "L1558;1S}kKQP;t9-4KQ0P}75R-p",
+      "width": 1920,
+      "height": 1080,
+      "position": "65% center"
+    },
+    {
+      "src": "morimoto.avif",
+      "blurhash": "LS98rlMwaJnhu6VroyjFI9s.o#f7",
+      "width": 1920,
+      "height": 1080,
+      "position": "5% center"
+    },
+    {
+      "src": "sekkakyo.avif",
+      "blurhash": "LzKBwMWXWCNG~qRjRjfPt6WBWBt7",
+      "width": 1920,
+      "height": 1080,
+      "position": "70% center"
+    },
+    {
+      "src": "umimoto.avif",
+      "blurhash": "LgD_8UE2M|ofyGRjbIbI8^jE%2R+",
+      "width": 1920,
+      "height": 1080,
+      "position": "60% center"
+    }
+  ]
+}

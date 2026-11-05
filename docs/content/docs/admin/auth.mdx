@@ -48,6 +48,8 @@ oauth2-proxy は 1 プロセスに複数 provider を持てないため 2 プロ
 
 ## 運用メモ
 
+- ログイン選択画面のソースは `gateway/login-page/` にある。ハブはビルドを行わないため、
+  `pnpm run build` で生成した `gateway/caddy/www/index.html` もソースと一緒にコミットする
 - セッションは 7 日(`cookie_expire`)、1 時間ごとに更新。cookie ドメインは
   `.dev.morino.party` なので `private` 配下のどのアプリでも 1 回のログインで済む
 - ログアウトは `https://auth.dev.morino.party/oauth2/github/sign_out` /

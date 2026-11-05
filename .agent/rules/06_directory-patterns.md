@@ -5,6 +5,7 @@
 - `terraform/modules/linode-gateway/` に Linode Nanode + Firewall + cloud-init のモジュールを配置します。
 - `terraform/envs/prod/` に実環境の値 (`main.tf`, `terraform.tfvars` など) を配置します。state はローカル + gitignore です。
 - `gateway/caddy/` に Linode 上の Caddy のルーティング表 (`Caddyfile`) とログイン選択画面 (`www/`) を配置します。ハブが git から自動で取り込みます。
+- `gateway/login-page/` にログイン選択画面のソースを配置します。`www/index.html` はこのビルド生成物なので、直接編集せず、ソースと一緒にコミットしてください。
 - `ansible/` に Ansible を配置します。
   - `ansible/inventory/hosts.yml` - インベントリ (gateway / site1 / site2 / k8s_cluster / spare / wings_nodes)
   - `ansible/group_vars/` - グループ変数。`all/network.yml` (ネットワーク値の唯一の正)、`all/versions.yml` (バージョンピン)、`gateway/`、`k8s_cluster/`、`wings_nodes/`、`site1.yml` / `site2.yml`

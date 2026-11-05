@@ -4,6 +4,7 @@ ignore: |
   .venv/
   .terraform/
   docs/
+  gateway/login-page/
 
 rules:
   line-length:

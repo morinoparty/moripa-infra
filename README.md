@@ -47,9 +47,10 @@ moripa-infra/
 │   └── envs/
 │       └── prod/               # 実環境の tfvars(state はローカル + gitignore)
 ├── gateway/
-│   └── caddy/                  # ★ Linode 上の Caddy のルーティング表(ハブが git から自動取り込み)
-│       ├── Caddyfile           # *.site<N>.dev / *.site<N>.private.dev / auth.dev
-│       └── www/                # ログイン選択画面
+│   ├── caddy/                  # ★ Linode 上の Caddy のルーティング表(ハブが git から自動取り込み)
+│   │   ├── Caddyfile           # *.site<N>.dev / *.site<N>.private.dev / auth.dev
+│   │   └── www/                # ログイン選択画面(index.html は login-page の生成物)
+│   └── login-page/             # ログイン選択画面のソース(React + Chlorophyll)
 ├── ansible/
 │   ├── inventory/hosts.yml     # gateway / site1(_control_plane) / site2(_control_plane)
 │   ├── group_vars/

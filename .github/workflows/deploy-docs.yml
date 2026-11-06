@@ -17,17 +17,15 @@ jobs:
     timeout-minutes: 10
     name: Deploy Docs to Cloudflare Workers
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      # pnpm (docs/package.json の packageManager) と Node (docs/.node-version) をまとめて入れる。
+      # pnpm/action-setup の self-installer (npm 経由) を使わないので速い
+      - uses: pnpm/setup@v3
         with:
-          package_json_file: docs/package.json
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
+          working-directory: docs
+          cache: true      # pnpm store を docs/pnpm-lock.yaml ごとにキャッシュ
+          install: false   # install は次の手順で --frozen-lockfile 付きで行う
 
       - name: Install
         working-directory: docs
@@ -44,7 +42,7 @@ jobs:
       # private に戻す場合は同名のリポジトリシークレットを登録すること)。
       # CF_ACCOUNT_ID はリポジトリシークレット
       - name: Get deploy token from Bitwarden Secrets Manager
-        uses: bitwarden/sm-action@v3.0.1
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
         with:
           access_token: ${{ secrets.NIKOMARU_BITWARDEN_SECRET_MANAGER_ACCESS_TOKEN }}
           secrets: |

@@ -1,0 +1,5 @@
+# pnpm 12 は許可していない依存の build script を実行せずエラーにする
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true

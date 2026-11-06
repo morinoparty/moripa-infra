@@ -9,9 +9,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
@@ -21,7 +21,7 @@ jobs:
           terraform -chdir=terraform/envs/prod init -backend=false -input=false
           terraform -chdir=terraform/envs/prod validate
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
 
       - name: Python ツールを準備
         run: |
@@ -116,15 +116,14 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      # pnpm (docs/package.json の packageManager) と Node (docs/.node-version) をまとめて入れる。
+      # pnpm/action-setup の self-installer (npm 経由) を使わないので速い
+      - uses: pnpm/setup@v3
         with:
-          package_json_file: docs/package.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
+          working-directory: docs
+          cache: true      # pnpm store を docs/pnpm-lock.yaml ごとにキャッシュ
+          install: false   # install は次の手順で --frozen-lockfile 付きで行う
       - name: ドキュメントサイトをビルド
         working-directory: docs
         run: |
